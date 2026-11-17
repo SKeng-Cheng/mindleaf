@@ -83,10 +83,12 @@ function buildReadme(source, baseSha) {
   return `${text.slice(0, index)}\n${banner}${text.slice(index + 1)}`;
 }
 
-/** lite 的 package.json：只留实际存在的 files，去掉跑不了的测试脚本。 */
-function buildPackageJson(source) {
+/** lite 的 package.json：只留这次真的带上的 files，去掉跑不了的测试脚本。 */
+function buildPackageJson(source, included) {
   const pkg = JSON.parse(source);
-  if (Array.isArray(pkg.files)) pkg.files = pkg.files.filter((entry) => fs.existsSync(path.join(ROOT, entry)));
+  if (Array.isArray(pkg.files)) {
+    pkg.files = pkg.files.filter((entry) => included.some((file) => file === entry || file.startsWith(`${entry}/`)));
+  }
   if (pkg.scripts) {
     delete pkg.scripts.test;
     delete pkg.scripts['test:e2e'];
@@ -132,7 +134,10 @@ function main() {
 
     // 2. README 与 package.json 重新生成
     fs.writeFileSync(path.join(workTree, 'README.md'), buildReadme(fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8'), baseSha));
-    fs.writeFileSync(path.join(workTree, 'package.json'), buildPackageJson(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')));
+    fs.writeFileSync(
+      path.join(workTree, 'package.json'),
+      buildPackageJson(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'), [...files, 'package.json']),
+    );
 
     // 3. 用临时 index 生成一个孤儿提交
     const gitEnv = { ...process.env, GIT_INDEX_FILE: indexFile };
