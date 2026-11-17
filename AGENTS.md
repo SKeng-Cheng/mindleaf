@@ -27,7 +27,8 @@
 | `create_map` | 新建（可指定 `template`） |
 | `read_map` | 读：默认 outline（带节点 id），也可 `json` / `markdown` |
 | `apply_ops` | **改多个点就用它**，一批 op 原子生效 |
-| `add_node` / `update_node` / `remove_node` / `move_node` / `add_edge` | 单点修改；`update_node` 支持 `color` / `textColor` / `lineColor` / `fontSize` / `font` / `boxWidth` / `boxHeight` / `annotation` |
+| `add_node` / `update_node` / `remove_node` / `move_node` | 单点修改；`update_node` 支持 `color` / `textColor` / `lineColor` / `fontSize` / `font` / `boxWidth` / `boxHeight` / `annotation` |
+| `add_edge` / `update_edge` / `remove_edge` | 关联线：新建 / 改说明·颜色·备注·批注 / 删除（id 用 `read_map` 里的关联线清单） |
 | `update_map` | 改标题 / 布局 / 主题 / 标签（`tags`） |
 | `list_tags` | 看所有标签及各自数量 |
 | `list_annotations` | **看人类给这个节点留的批注（修改要求）**，不给 map 就扫全部 |
@@ -51,6 +52,8 @@ $MM export 项目规划 -f png         # 默认写到 exports/
 $MM serve --detach --open          # 后台起网页（关掉终端也不停，网页全关后自动退出）
 $MM stop                           # 关掉后台服务
 $MM annotations                    # 看有没有人类留的批注要处理
+$MM edges                          # 列出关联线（带 id）
+$MM edge-set 项目规划 e_ab12c --label 影响排期 --annotation "这条依赖过时了"
 ```
 
 ## 改图的三条规矩
@@ -102,7 +105,8 @@ $MM annotations                    # 看有没有人类留的批注要处理
 - `annotation` 是人类写给 agent 的修改要求（画布上蓝色小点、大纲里 ⚑），处理完要清空，
   清空后标记自动消失。`note` 是人给自己看的备注，画布上不显示标记。
 
-- `edges` 是跨分支的关联线（虚线箭头），不参与树结构。
+- `edges` 是跨分支的关联线（虚线箭头），不参与树结构；也可以有 `color` / `note` / `annotation`，
+  批注同样要照着改、改完清空。
 - 读到不合法的文件也不要慌：`normalizeDoc` 会自动修复孤儿、环、重复 id、多根。
 
 ## 项目结构

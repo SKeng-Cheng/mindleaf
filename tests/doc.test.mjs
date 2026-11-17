@@ -6,6 +6,7 @@ import {
   normalizeTags,
   normalizeHexColor,
   annotationsOf,
+  edgeAnnotationsOf,
   ANNOTATION_MAX,
   tagsToText,
   FONTS,
@@ -245,6 +246,28 @@ test('outline 会带出批注，annotationsOf 按树的顺序返回', () => {
   const list = annotationsOf(doc);
   assert.deepEqual(list.map((item) => item.id), [a.id, a1.id], '按树的先序排列');
   assert.equal(list[0].text, 'A');
+});
+
+test('关联线支持颜色/备注/批注，归一化会保留', () => {
+  const doc = normalizeDoc({
+    nodes: [
+      { id: 'root', parent: null, text: '根' },
+      { id: 'a', parent: 'root', text: 'A' },
+      { id: 'b', parent: 'root', text: 'B' },
+    ],
+    edges: [
+      { id: 'e1', from: 'a', to: 'b', label: ' 核对 ', color: '#BE123C', note: ' 备注 ', annotation: ' 改一下 ' },
+      { id: 'e2', from: 'a', to: 'b', color: 'nope' },
+    ],
+  });
+  const [first, second] = doc.edges;
+  assert.equal(first.label, '核对');
+  assert.equal(first.color, '#be123c', '颜色要小写归一化');
+  assert.equal(first.note, '备注');
+  assert.equal(first.annotation, '改一下');
+  assert.equal(second.color, undefined, '非法颜色丢掉');
+  assert.equal(second.label, undefined);
+  assert.deepEqual(edgeAnnotationsOf(doc).map((item) => item.id), ['e1']);
 });
 
 test('recordChange 递增 rev 并裁剪 journal', () => {

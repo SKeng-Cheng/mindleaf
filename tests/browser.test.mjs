@@ -615,6 +615,170 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：关联线可以点选、改说明/颜色/备注/批注', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const doc = session.store.read(slug).doc;
+  const [a, b] = doc.nodes.filter((node) => node.parent === 'root' && node.id !== 'root');
+  session.store.applyOps(slug, [{ op: 'addEdge', from: a.id, to: b.id, label: '核对' }], { by: 'user' });
+  const edgeId = session.store.read(slug).doc.edges[0].id;
+
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  // 点线的中点
+  const clicked = await browser.evaluate(`(async () => {
+    const group = document.querySelector('#canvas-stage g.mm-edge[data-edge-id="${edgeId}"]');
+    const path = group.querySelector('.mm-edge-line');
+    const point = path.getPointAtLength(path.getTotalLength() * 0.5);
+    const ctm = path.getScreenCTM();
+    const x = point.x * ctm.a + point.y * ctm.c + ctm.e;
+    const y = point.x * ctm.b + point.y * ctm.d + ctm.f;
+    const opts = { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 };
+    path.dispatchEvent(new PointerEvent('pointerdown', opts));
+    path.dispatchEvent(new PointerEvent('pointerup', opts));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return {
+      selected: document.querySelectorAll('#canvas-stage g.mm-edge.is-selected').length,
+      label: document.querySelector('#edge-label')?.value,
+      hasNote: !!document.querySelector('#edge-note'),
+      hasAnnotation: !!document.querySelector('#edge-annotation'),
+      swatches: document.querySelectorAll('[data-act="edge-style"]').length,
+      ends: [...document.querySelectorAll('.edge-end')].map((item) => item.textContent),
+    };
+  })()`);
+  assert.equal(clicked.selected, 1, '点击后该关联线应高亮选中');
+  assert.equal(clicked.label, '核对', '面板里应显示当前说明');
+  assert.equal(clicked.hasNote, true, '面板应有备注');
+  assert.equal(clicked.hasAnnotation, true, '面板应有批注');
+  assert.ok(clicked.swatches >= 7, '面板应有预设色 + 清除');
+  assert.equal(clicked.ends.length, 2, '面板应显示两端节点');
+
+  // 改说明 / 颜色 / 备注 / 批注
+  await browser.evaluate(`(async () => {
+    const label = document.querySelector('#edge-label');
+    label.value = '核对解析策略';
+    label.dispatchEvent(new Event('input', { bubbles: true }));
+    label.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    document.querySelector('[data-act="edge-style"][data-value="#ef4444"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    const note = document.querySelector('#edge-note');
+    note.value = '这条线给自己看';
+    note.dispatchEvent(new Event('input', { bubbles: true }));
+    note.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const ann = document.querySelector('#edge-annotation');
+    ann.value = '这条依赖已经不成立';
+    ann.dispatchEvent(new Event('input', { bubbles: true }));
+    ann.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  })()`);
+  let edge = session.store.read(slug).doc.edges.find((item) => item.id === edgeId);
+  assert.equal(edge.label, '核对解析策略');
+  assert.equal(edge.color, '#ef4444');
+  assert.equal(edge.note, '这条线给自己看');
+  assert.equal(edge.annotation, '这条依赖已经不成立');
+
+  // 有批注的线换成蓝色箭头
+  const blue = await browser.evaluate(`!!document.querySelector('#canvas-stage g.mm-edge[data-edge-id="${edgeId}"] [marker-end*="arrow-annotation"]')`);
+  assert.equal(blue, true, '有关联线批注时箭头应为蓝色');
+
+  // 删除（走确认框）
+  await browser.evaluate(`document.querySelector('[data-act="edge-remove"]').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const dialogOpen = await browser.evaluate(`!!document.querySelector('#dlg-confirm').open`);
+  assert.equal(dialogOpen, true, '删除关联线应先确认');
+  await browser.evaluate(`document.querySelector('#confirm-ok').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  assert.equal(session.store.read(slug).doc.edges.some((item) => item.id === edgeId), false, '确认后应删除');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
+test('浏览器：选中节点后点「加关联线」再点另一个节点即可新建', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  const created = await browser.evaluate(`(async () => {
+    const groups = [...document.querySelectorAll('#canvas-stage g[data-node-id]')];
+    const clickNode = async (group) => {
+      const rect = group.querySelector('rect').getBoundingClientRect();
+      const opts = { bubbles: true, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2, button: 0, pointerId: 1 };
+      group.dispatchEvent(new PointerEvent('pointerdown', opts));
+      group.dispatchEvent(new PointerEvent('pointerup', opts));
+      group.dispatchEvent(new MouseEvent('click', opts));
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    };
+    const first = groups[1];
+    const second = groups[groups.length - 1];
+    await clickNode(first);
+    const button = document.querySelector('[data-act="start-link"]');
+    const hasButton = !!button;
+
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const hintShown = !document.querySelector('#link-hint').hidden;
+    const sourceMarked = document.querySelectorAll('#canvas-stage g.is-link-source').length;
+    await clickNode(second);
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return {
+      hasButton,
+      hintShown,
+      sourceMarked,
+      hintGone: document.querySelector('#link-hint').hidden,
+      panelOpen: !!document.querySelector('#edge-label'),
+      ends: [...document.querySelectorAll('.edge-end')].map((item) => item.textContent),
+      firstId: first.dataset.nodeId,
+      secondId: second.dataset.nodeId,
+    };
+  })()`);
+  assert.equal(created.hasButton, true, '节点面板右下应有「加关联线」');
+  assert.equal(created.hintShown, true, '进入连线模式应有提示条');
+  assert.equal(created.sourceMarked, 1, '起点节点应被标出来');
+  assert.equal(created.hintGone, true, '连完线提示条应消失');
+  assert.equal(created.panelOpen, true, '连好后应直接打开新关联线的面板');
+
+  const edges = session.store.read(slug).doc.edges;
+  assert.equal(edges.length, 1, '应新增一条关联线');
+  assert.equal(edges[0].from, created.firstId);
+  assert.equal(edges[0].to, created.secondId);
+
+  // 反向
+  await browser.evaluate(`document.querySelector('[data-act="edge-reverse"]').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const reversed = session.store.read(slug).doc.edges[0];
+  assert.equal(reversed.from, created.secondId);
+  assert.equal(reversed.to, created.firstId);
+
+  // Esc 取消连线模式
+  const cancelled = await browser.evaluate(`(async () => {
+    const group = [...document.querySelectorAll('#canvas-stage g[data-node-id]')].pop();
+    const rect = group.querySelector('rect').getBoundingClientRect();
+    // 靠左一点点，避开可能压在节点上的关联线标签
+    const opts = { bubbles: true, clientX: rect.x + 10, clientY: rect.y + rect.height / 2, button: 0, pointerId: 1 };
+    group.dispatchEvent(new PointerEvent('pointerdown', opts));
+    group.dispatchEvent(new PointerEvent('pointerup', opts));
+    group.dispatchEvent(new MouseEvent('click', opts));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    document.querySelector('[data-act="start-link"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return { hintGone: document.querySelector('#link-hint').hidden };
+  })()`);
+  assert.equal(cancelled.hintGone, true, 'Esc 应取消连线模式');
+  assert.equal(session.store.read(slug).doc.edges.length, 1, '取消后不应新增关联线');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：新建节点沿用上一个节点的颜色', { skip, timeout: 120000 }, async (t) => {
   const { session, slug } = await bootProject();
   // 先给一个一级节点上色

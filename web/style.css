@@ -1005,6 +1005,88 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 }
 .seg.mini .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* ---------- 关联线：命中区、选中态、连线模式 ---------- */
+#canvas-stage .mm-edge { cursor: pointer; }
+#canvas-stage .mm-edge-hit { cursor: pointer; }
+#canvas-stage .mm-edge.is-selected .mm-edge-line {
+  stroke-width: 3.2px;
+  opacity: 1;
+  filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.45));
+}
+#canvas-stage .mm-edge:hover .mm-edge-line { opacity: 1; stroke-width: 2.6px; }
+#canvas-stage.is-linking, .canvas-viewport.is-linking { cursor: crosshair; }
+#canvas-viewport.is-linking { cursor: crosshair; }
+/* 连线起点节点：绿松石色描边，提示"从这里连出去" */
+#canvas-stage g[data-node-id].is-link-source rect {
+  stroke: var(--drop, #0d9488);
+  stroke-width: 2.4px;
+  stroke-dasharray: 6 4;
+}
+
+/* 连线提示条 */
+.link-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  color: var(--ink);
+}
+.link-hint[hidden] { display: none; }
+.link-hint-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--drop, #0d9488);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--drop, #0d9488) 22%, transparent);
+}
+
+/* 关联线面板 */
+.edge-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.edge-chip {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--panel-3);
+  color: var(--ink-3);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+}
+.edge-ends {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.edge-end {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+  font-size: 11.8px;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edge-arrow { color: var(--ink-3); font-size: 12px; }
+.edge-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.edge-cta .hint { margin: 0; }
+
 /* ---------- 节点备注悬浮提示 ---------- */
 .note-tooltip {
   position: fixed;
@@ -1149,8 +1231,10 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .struct-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .struct-grid .btn { justify-content: flex-start; padding: 0 10px; }
 .struct-grid .btn.wide { grid-column: 1 / -1; }
-.struct-grid .btn.danger { color: var(--danger); }
-.struct-grid .btn.danger:hover { background: var(--danger-soft); }
+.struct-grid .btn.danger { color: #fff; }
+/* 幽灵样式的危险按钮才用红字（实心的 danger 按钮是红底白字） */
+.struct-grid .btn.ghost.danger { color: var(--danger); }
+.struct-grid .btn.ghost.danger:hover { background: var(--danger-soft); }
 
 /* 元信息 */
 .meta-block {

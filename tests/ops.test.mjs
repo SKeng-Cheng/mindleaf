@@ -141,6 +141,30 @@ test('新建节点默认沿用空间上前一个节点的颜色（不是父节�
   assert.equal(afterPlain.color, '#bfdbfe');
 });
 
+test('addEdge / updateEdge 支持颜色、备注、批注，空串即清除', () => {
+  const doc = createDoc({ title: 'edges', rootText: '根' });
+  const a = addNode(doc, { parent: 'root', text: 'A' });
+  const b = addNode(doc, { parent: 'root', text: 'B' });
+  const edge = addEdge(doc, { from: a.id, to: b.id, label: '核对', color: '#be123c', note: '给自己', annotation: '改说法' });
+  assert.equal(edge.color, '#be123c');
+  assert.equal(edge.note, '给自己');
+  assert.equal(edge.annotation, '改说法');
+
+  updateEdge(doc, { id: edge.id, label: '核对解析', color: '#0ea5e9' });
+  assert.equal(doc.edges[0].label, '核对解析');
+  assert.equal(doc.edges[0].color, '#0ea5e9');
+
+  updateEdge(doc, { id: edge.id, color: '', note: '', annotation: '' });
+  assert.equal(doc.edges[0].color, undefined);
+  assert.equal(doc.edges[0].note, undefined);
+  assert.equal(doc.edges[0].annotation, undefined);
+
+  // 反向
+  updateEdge(doc, { id: edge.id, from: b.id, to: a.id });
+  assert.equal(doc.edges[0].from, b.id);
+  assert.equal(doc.edges[0].to, a.id);
+});
+
 test('updateNode 支持批注，传空串可以清掉', () => {
   const { doc, a } = base();
   updateNode(doc, { id: a.id, annotation: '改成两个节点' });

@@ -302,8 +302,16 @@ export function normalizeDoc(input) {
       } while (edgeIds.has(id));
     }
     edgeIds.add(id);
+    const edge = { id, from, to };
     const label = clampString(raw.label).trim();
-    doc.edges.push(label ? { id, from, to, label } : { id, from, to });
+    if (label) edge.label = label;
+    const note = clampString(raw.note).trim();
+    if (note) edge.note = note;
+    const annotation = clampString(raw.annotation).trim().slice(0, ANNOTATION_MAX);
+    if (annotation) edge.annotation = annotation;
+    const color = normalizeHexColor(raw.color);
+    if (color) edge.color = color;
+    doc.edges.push(edge);
   }
 
   const journalMax = doc.journal.reduce((max, entry) => Math.max(max, entry.rev), 0);
@@ -459,6 +467,13 @@ export function outline(doc, options = {}) {
     }
   });
   return lines.join('\n');
+}
+
+/** 关联线上留给 AI 的批注。 */
+export function edgeAnnotationsOf(doc) {
+  return (doc.edges ?? [])
+    .filter((edge) => edge.annotation)
+    .map((edge) => ({ id: edge.id, from: edge.from, to: edge.to, label: edge.label ?? '', annotation: edge.annotation }));
 }
 
 /** 所有带批注的节点（AI 接手时先看这个），按树的顺序返回。 */

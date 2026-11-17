@@ -145,7 +145,7 @@ mm export 项目规划 -f png                     # 导出
 
 这是写这个工具最主要的原因。
 
-接上 MCP 之后，AI 那边有 19 个工具，典型用法是：
+接上 MCP 之后，AI 那边有 21 个工具，典型用法是：
 
 ```
 read_map  →  apply_ops  →  export_map
@@ -220,7 +220,37 @@ mm list --tag 项目                    # 只看带这个标签的图
 - 带备注的节点后面有个小圆点；
 - 顶部搜索框能在大纲里找节点，命中会自动展开到那一层。
 
-## 七、节点能挂链接：文件、网页、代码
+## 七、关联线：跨分支拉一条虚线
+
+两个不同分支的节点之间可以拉一条虚线箭头，表示"这两个点有关系"。
+
+**新建**：选中起点节点 → 右侧面板底部「加关联线…」→ 画布进入连线模式（光标变十字，起点节点描边高亮）
+→ 点另一个节点，线就建好了，并直接打开它的面板。
+
+![关联线面板：说明、备注、批注、颜色、反向/删除](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/edge-panel.png)
+
+**选中与编辑**：直接点那条线（或线上的说明标签），右侧就换成关联线的面板：
+
+| 面板项 | 作用 |
+| --- | --- |
+| 说明 | 线上的文字，比如「依赖」「需要核对」 |
+| 备注 | 给自己看的补充，画布上不显示 |
+| 批注 | 写给 AI 的修改要求（和节点的批注一样，AI 读图时先看到），有批注的线是蓝色虚线 |
+| 颜色 | 6 个预设 + 自定义 + 清除 |
+| 操作 | 反向（起点终点对调）、删除关联 |
+
+![连线模式：起点节点描边高亮，顶部提示点另一个节点](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/edge-link-mode.png)
+
+快捷键：选中线后 `Delete` 删除（会确认），`Esc` 取消选中；连线模式里 `Esc` 取消。
+
+```bash
+mm edges                                     # 列出所有关联线（带 id）
+mm edge 项目规划 风险 里程碑 --label 影响排期 --color "#ef4444"
+mm edge-set 项目规划 e_ab12c --label 影响排期 --note 给自己看 --annotation "这条依赖过时了"
+mm edge-rm 项目规划 e_ab12c
+```
+
+## 八、节点能挂链接：文件、网页、代码
 
 | 类型 | 写法 | 点开之后 |
 | --- | --- | --- |
@@ -236,7 +266,7 @@ mm list --tag 项目                    # 只看带这个标签的图
 节点右侧的小灰点就是链接标记：**一个点代表一条链接，最多画 3 个**。所以看到 2 个灰点，说明这个节点挂了 2 条链接。
 （画布的左侧小点另有含义：蓝色 = 有批注。备注不画点，靠鼠标悬停看。）
 
-## 八、十个开箱能用的模板
+## 九、十个开箱能用的模板
 
 新建的时候可以直接选模板。论文提纲、研究计划、文献综述这些有，做项目、开会、排周计划也有：
 
@@ -258,7 +288,7 @@ mm list --tag 项目                    # 只看带这个标签的图
 模板就是 `templates/` 下的 Markdown 文件，标题层级对应树的层级，列表项变成节点备注。
 想加自己的，丢一个 `.md` 进去就行。
 
-## 九、导出：PNG / JPG / PDF / SVG / Markdown / JSON / HTML
+## 十、导出：PNG / JPG / PDF / SVG / Markdown / JSON / HTML
 
 ```bash
 mm export 项目规划 -f pdf              # 默认写到 exports/
@@ -278,7 +308,7 @@ mm export 项目规划 -f png --scale 2 -o ~/Desktop/项目规划.png
 
 `mm doctor` 会告诉你能用哪些能力。一个都没有也不影响正常用 —— 网页里导 PNG/JPG 是浏览器自己画的。
 
-## 十、深色、窄屏、还有一堆小地方
+## 十一、深色、窄屏、还有一堆小地方
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/ui-dark.png" alt="深色主题和双侧布局" width="49%">
@@ -308,7 +338,10 @@ mm export 项目规划 -f png --scale 2 -o ~/Desktop/项目规划.png
 | `mm set <导图> <节点> ...` | 改节点：`--text` `--note` `--annotation` `--color` `--text-color` `--line-color` `--font-size` `--font` `--width` `--height` `--link` `--parent` `--subtree` |
 | `mm rm <导图> <节点>` | 删除节点（含子树） |
 | `mm mv <导图> <节点> <新父节点>` | 移动节点 |
-| `mm edge <导图> <起点> <终点> [--label]` | 加跨分支关联线 |
+| `mm edge <导图> <起点> <终点> [--label] [--color] [--note] [--annotation]` | 加跨分支关联线 |
+| `mm edges [导图]` | 列出关联线（带 id） |
+| `mm edge-set <导图> <关联线id> [...]` | 改关联线：`--label` `--color` `--note` `--annotation` `--from` `--to` |
+| `mm edge-rm <导图> <关联线id>` | 删除关联线 |
 | `mm tag <导图> [--add a,b] [--remove c] [--set x,y] [--clear]` | 管理标签 |
 | `mm annotations [导图]` | 列出待处理的批注 |
 | `mm import <导图\|new> <文件.md>` | 从 Markdown 导入 |
@@ -343,7 +376,7 @@ MCP 走标准 stdio 协议，DSH、Codex、Claude Code、Claude Desktop 都能�
 node bin/mindleaf.mjs mcp --project "/path/to/项目"
 ```
 
-AI 那边的 19 个工具：`list_maps` `list_tags` `list_fonts` `list_templates` `create_map` `read_map`
+AI 那边的 21 个工具：`list_maps` `list_tags` `list_fonts` `list_templates` `create_map` `read_map`
 `add_node` `update_node` `remove_node` `move_node` `apply_ops` `add_edge` `update_map` `list_annotations` `export_map`
 `import_markdown` `recent_changes` `open_in_browser` `doctor`。
 
@@ -447,7 +480,8 @@ node 的绝对路径，并且用 `--project` 明确告诉它项目在哪。
       "fontSize": 18, "font": "kai", "boxWidth": 220,
       "links": [{ "kind": "file", "target": "docs/architecture.md", "label": "架构说明" }] }
   ],
-  "edges": [{ "id": "e_1", "from": "n_1", "to": "n_2", "label": "关联" }],
+  "edges": [{ "id": "e_1", "from": "n_1", "to": "n_2", "label": "关联",
+              "color": "#be123c", "note": "给自己看", "annotation": "这条依赖过时了" }],
   "journal": [{ "rev": 2, "at": "…", "by": "agent", "action": "ops", "summary": "新增 3 个节点" }]
 }
 ```

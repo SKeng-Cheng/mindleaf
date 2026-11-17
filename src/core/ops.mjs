@@ -268,8 +268,24 @@ export function addEdge(doc, patch = {}) {
   }
   const edge = { id, from: from.id, to: to.id };
   if (typeof patch.label === 'string' && patch.label.trim()) edge.label = patch.label.trim();
+  applyEdgeStyle(edge, patch);
   doc.edges.push(edge);
   return edge;
+}
+
+/** 关联线的附加属性：颜色 / 备注 / 批注（传空串即清除）。 */
+function applyEdgeStyle(edge, patch) {
+  if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
+    const color = normalizeHexColor(patch.color);
+    if (color) edge.color = color;
+    else delete edge.color;
+  }
+  for (const key of ['note', 'annotation']) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    const value = typeof patch[key] === 'string' ? patch[key].trim() : '';
+    if (value) edge[key] = key === 'annotation' ? value.slice(0, ANNOTATION_MAX) : value;
+    else delete edge[key];
+  }
 }
 
 export function updateEdge(doc, patch = {}) {
@@ -284,6 +300,7 @@ export function updateEdge(doc, patch = {}) {
     if (patch.label) edge.label = String(patch.label).trim();
     else delete edge.label;
   }
+  applyEdgeStyle(edge, patch);
   return edge;
 }
 

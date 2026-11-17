@@ -18,6 +18,7 @@ import {
   FONTS,
   FONT_KEYS,
   annotationsOf,
+  edgeAnnotationsOf,
   getNode,
   rootOf,
   outline,
@@ -186,13 +187,15 @@ export function createTools(store) {
       const blocks = [];
       for (const target of targets) {
         const items = annotationsOf(target.doc);
-        if (!items.length) continue;
-        blocks.push(
-          `## ${target.doc.title}  (slug: ${target.slug})\n` +
-            items
-              .map((item) => `- 〔${item.id}〕「${item.text}」\n  ⚑ ${item.annotation.replace(/\n/g, '\n    ')}`)
-              .join('\n'),
-        );
+        const edgeItems = edgeAnnotationsOf(target.doc);
+        if (!items.length && !edgeItems.length) continue;
+        const nodeLines = items.map((item) => `- 〔${item.id}〕「${item.text}」\n  ⚑ ${item.annotation.replace(/\n/g, '\n    ')}`);
+        const edgeLines = edgeItems.map((edge) => {
+          const from = getNode(target.doc, edge.from);
+          const to = getNode(target.doc, edge.to);
+          return `- 关联线 ${edge.id}： 「${from?.text ?? edge.from}」 → 「${to?.text ?? edge.to}」\n  ⚑ ${edge.annotation.replace(/\n/g, '\n    ')}`;
+        });
+        blocks.push(`## ${target.doc.title}  (slug: ${target.slug})\n${[...nodeLines, ...edgeLines].join('\n')}`);
       }
       if (!blocks.length) {
         return toolResult(args.map ? '这张图上没有待处理的批注。' : '所有导图都没有待处理的批注。');
@@ -281,16 +284,23 @@ export function createTools(store) {
       const hintLine = hints.length
         ? `\n⚠️ 有 ${hints.length} 条批注等你处理（节点 ${hints.map((item) => item.id).join(', ')}），先看 ⚑ 标记再动手。\n`
         : '';
-      return toolResult(
-        header +
-          hintLine +
-          '\n' +
-          outline(doc, {
-            withNotes: args.withNotes === true,
-            withLinks: args.withLinks !== false,
-            withAnnotations: args.withAnnotations !== false,
-          }),
-      );
+      const text = outline(doc, {
+        withNotes: args.withNotes === true,
+        withLinks: args.withLinks !== false,
+        withAnnotations: args.withAnnotations !== false,
+      });
+      const edgeLines = (doc.edges ?? []).map((edge) => {
+        const from = getNode(doc, edge.from);
+        const to = getNode(doc, edge.to);
+        const parts = [`- ${edge.id}: 「${from?.text ?? edge.from}」 → 「${to?.text ?? edge.to}」`];
+        if (edge.label) parts.push(`  说明: ${edge.label}`);
+        if (edge.color) parts.push(`  颜色: ${edge.color}`);
+        if (edge.note) parts.push(`  备注: ${edge.note.replace(/\n/g, ' ')}`);
+        if (edge.annotation) parts.push(`  ⚑ 批注: ${edge.annotation.replace(/\n/g, ' ')}`);
+        return parts.join('\n');
+      });
+      const edgeBlock = edgeLines.length ? `\n\n关联线（${edgeLines.length} 条，用 mindleaf_update_edge / mindleaf_remove_edge 改）：\n${edgeLines.join('\n')}` : '';
+      return toolResult(header + hintLine + '\n' + text + edgeBlock);
     },
   );
 
@@ -492,7 +502,8 @@ Example: {"ops":[{"op":"addNode","parent":"n_root","text":"第 1 章"},{"op":"ad
   add(
     {
       name: 'mindleaf_add_edge',
-      description: 'Draw a cross-branch relation (dashed arrow) between two nodes, with an optional label.',
+      description:
+        'Draw a cross-branch relation (dashed arrow) between two nodes. Supports a label, a line color, a note for humans and an annotation (an instruction for the agent). Edit it later with mindleaf_update_edge.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -500,6 +511,9 @@ Example: {"ops":[{"op":"addNode","parent":"n_root","text":"第 1 章"},{"op":"ad
           from: { type: 'string' },
           to: { type: 'string' },
           label: { type: 'string' },
+          color: { type: 'string', description: 'Line color, #rrggbb. Omit for the theme color.' },
+          note: { type: 'string', description: 'Note attached to the relation (for humans).' },
+          annotation: { type: 'string', description: "Instruction for the agent about this relation, e.g. 'this dependency no longer holds'." },
         },
         required: ['map', 'from', 'to'],
         additionalProperties: false,
@@ -509,8 +523,75 @@ Example: {"ops":[{"op":"addNode","parent":"n_root","text":"第 1 章"},{"op":"ad
       const { doc } = store.read(args.map);
       const from = resolveNodeRef(doc, args.from);
       const to = resolveNodeRef(doc, args.to);
-      const { doc: next, results } = store.applyOps(args.map, [{ op: 'addEdge', from: from.id, to: to.id, label: args.label }], { by: 'agent' });
+      const { doc: next, results } = store.applyOps(args.map, [
+        { op: 'addEdge', from: from.id, to: to.id, label: args.label, color: args.color, note: args.note, annotation: args.annotation },
+      ], { by: 'agent' });
       return toolResult(`已添加关联线 ${results[0]?.id}：${from.text} → ${to.text}${args.label ? `（${args.label}）` : ''}\n${summarizeAfterWrite(next, '关联线')}`);
+    },
+  );
+
+  add(
+    {
+      name: 'mindleaf_update_edge',
+      description:
+        'Update an existing cross-branch relation: label, color, note, annotation, or flip/repoint its ends. Get edge ids from mindleaf_read_map (关联线 section) or mindleaf_list_annotations.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          map: { type: 'string' },
+          id: { type: 'string', description: 'Edge id, e.g. e_ab12c. Use mindleaf_read_map to find it.' },
+          label: { type: 'string', description: 'New label. "" clears it.' },
+          color: { type: 'string', description: 'Line color #rrggbb. "" restores the theme color.' },
+          note: { type: 'string' },
+          annotation: { type: 'string', description: 'Instruction for the agent. "" clears it once handled.' },
+          from: { type: 'string', description: 'New start node (id or text).' },
+          to: { type: 'string', description: 'New end node (id or text).' },
+        },
+        required: ['map', 'id'],
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const { doc } = store.read(args.map);
+      const edge = (doc.edges ?? []).find((item) => item.id === args.id);
+      if (!edge) throw new StoreError(`找不到关联线：${args.id}`, 'not_found');
+      const patch = { op: 'updateEdge', id: edge.id };
+      for (const key of ['label', 'color', 'note', 'annotation']) {
+        if (args[key] !== undefined) patch[key] = args[key];
+      }
+      if (args.from !== undefined) patch.from = resolveNodeRef(doc, args.from).id;
+      if (args.to !== undefined) patch.to = resolveNodeRef(doc, args.to).id;
+      const { doc: next } = store.applyOps(args.map, [patch], { by: 'agent' });
+      const updated = next.edges.find((item) => item.id === edge.id);
+      const fromNode = getNode(next, updated.from);
+      const toNode = getNode(next, updated.to);
+      return toolResult(
+        `已更新关联线 ${updated.id}：${fromNode?.text ?? updated.from} → ${toNode?.text ?? updated.to}` +
+          `${updated.label ? `（${updated.label}）` : ''}${updated.annotation ? `\n批注：${updated.annotation}` : ''}\n${summarizeAfterWrite(next, '关联线')}`,
+      );
+    },
+  );
+
+  add(
+    {
+      name: 'mindleaf_remove_edge',
+      description: 'Delete a cross-branch relation by id.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          map: { type: 'string' },
+          id: { type: 'string', description: 'Edge id, e.g. e_ab12c.' },
+        },
+        required: ['map', 'id'],
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const { doc } = store.read(args.map);
+      const edge = (doc.edges ?? []).find((item) => item.id === args.id);
+      if (!edge) throw new StoreError(`找不到关联线：${args.id}`, 'not_found');
+      const { doc: next } = store.applyOps(args.map, [{ op: 'removeEdge', id: edge.id }], { by: 'agent' });
+      return toolResult(`已删除关联线 ${edge.id}\n${summarizeAfterWrite(next, '关联线')}`);
     },
   );
 

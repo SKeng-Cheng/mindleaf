@@ -244,6 +244,36 @@ test('CLI: 后台启动 → 已在运行 → stop 收尾', async () => {
   assert.match(none.stdout, /没有在后台运行/);
 });
 
+test('CLI: 关联线 —— edge 建、edges 列、edge-set 改、edge-rm 删', async () => {
+  const projectDir = tempProject();
+  await run(projectDir, ['new', '关联']);
+  await run(projectDir, ['add', '关联', 'A']);
+  await run(projectDir, ['add', '关联', 'B']);
+
+  const added = await run(projectDir, ['edge', '关联', 'A', 'B', '--label', '核对', '--color', '#be123c', '--note', '给自己', '--annotation', '改说法']);
+  assert.match(added.stdout, /A → B/);
+
+  const listed = await run(projectDir, ['edges', '关联']);
+  assert.match(listed.stdout, /核对/);
+  assert.match(listed.stdout, /#be123c/);
+  assert.match(listed.stdout, /备注: 给自己/);
+  assert.match(listed.stdout, /批注: 改说法/);
+
+  const doc = JSON.parse(fs.readFileSync(path.join(projectDir, 'maps', '关联.mindmap.json'), 'utf8'));
+  const edgeId = doc.edges[0].id;
+
+  const updated = await run(projectDir, ['edge-set', '关联', edgeId, '--label', '核对解析', '--color', '#ef4444']);
+  assert.match(updated.stdout, /已更新关联线/);
+  const afterUpdate = JSON.parse(fs.readFileSync(path.join(projectDir, 'maps', '关联.mindmap.json'), 'utf8'));
+  assert.equal(afterUpdate.edges[0].label, '核对解析');
+  assert.equal(afterUpdate.edges[0].color, '#ef4444');
+
+  const removed = await run(projectDir, ['edge-rm', '关联', edgeId]);
+  assert.match(removed.stdout, /已删除关联线/);
+  const afterRemove = JSON.parse(fs.readFileSync(path.join(projectDir, 'maps', '关联.mindmap.json'), 'utf8'));
+  assert.equal(afterRemove.edges.length, 0);
+});
+
 test('CLI: 批注 —— set --annotation、annotations 列表、清空', async () => {
   const projectDir = tempProject();
   await run(projectDir, ['new', '批注图']);

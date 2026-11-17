@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { createDoc } from '../src/core/doc.mjs';
-import { addEdge, addNode, updateNode } from '../src/core/ops.mjs';
+import { addEdge, addNode, updateEdge, updateNode } from '../src/core/ops.mjs';
 import { layoutDoc, textWidth, wrapText, treePath, relationPath, relationGeometry, relationLabelPoint, relationLabelPlacement, THEMES } from '../src/core/layout.mjs';
 import { renderSvg, docToSvg, esc } from '../src/core/svg.mjs';
 
@@ -296,6 +296,27 @@ test('示例图里所有关联线标签都不压住节点', () => {
       );
     }
   }
+});
+
+test('关联线带 id、可点击命中区，颜色/批注也能渲染出来', () => {
+  const doc = createDoc({ title: '线', rootText: '根' });
+  const a = addNode(doc, { parent: 'root', text: 'A' });
+  const b = addNode(doc, { parent: 'root', text: 'B' });
+  const edge = addEdge(doc, { from: a.id, to: b.id, label: '核对', color: '#be123c' });
+  updateEdge(doc, { id: edge.id, annotation: '这条线要改' });
+
+  const layout = layoutDoc(doc);
+  const relation = layout.edges.find((item) => item.kind === 'relation');
+  assert.equal(relation.edgeId, edge.id, '布局里要保留原边缘 id');
+  assert.equal(relation.color, '#be123c');
+  assert.equal(relation.hasAnnotation, true);
+
+  const svg = docToSvg(doc);
+  assert.match(svg, new RegExp(`data-edge-id="${edge.id}"`), '外层应有 data-edge-id 便于点击');
+  assert.match(svg, /class="mm-edge-hit"/, '应有透明加宽的命中区');
+  assert.match(svg, /stroke="#be123c"/, '线条用自定义颜色');
+  assert.match(svg, /arrow-annotation/, '有批注的线换蓝色箭头');
+  assert.match(svg, /data-edge-annotation-dot="1"/, '有批注的线应有个蓝点');
 });
 
 test('SVG 里关联线标签画在节点之后（不会被框挡住），底框实心', () => {

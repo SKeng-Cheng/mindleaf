@@ -221,6 +221,8 @@ const state = {
   query: '',
   sidebarTab: 'maps', // maps | outline
   styleScope: 'node', // node | subtree
+  selectedEdgeId: null, // 选中的关联线
+  linkFrom: null, // 正在连线的起点节点 id
   tagFilter: '',
   outlineQuery: '',
   slug: null,
@@ -358,6 +360,10 @@ function renderCanvas({ fit = false } = {}) {
 function applySelectionClass() {
   for (const group of $$('#canvas-stage g[data-node-id]')) {
     group.classList.toggle('is-selected', group.dataset.nodeId === state.selectedId);
+    group.classList.toggle('is-link-source', group.dataset.nodeId === state.linkFrom);
+  }
+  for (const group of $$('#canvas-stage g.mm-edge')) {
+    group.classList.toggle('is-selected', group.dataset.edgeId === state.selectedEdgeId);
   }
   for (const row of $$('#outline-panel .outline-row')) {
     const active = row.dataset.id === state.selectedId;
@@ -619,8 +625,73 @@ function renderInspector(force = false) {
       </div>`;
     return;
   }
+  const edge = state.selectedEdgeId ? (state.doc.edges ?? []).find((item) => item.id === state.selectedEdgeId) : null;
+  if (edge) {
+    body.innerHTML = edgeInspectorHtml(edge);
+    return;
+  }
   const node = state.selectedId ? getNode(state.doc, state.selectedId) : null;
   body.innerHTML = node ? nodeInspectorHtml(node) : emptyInspectorHtml();
+}
+
+/** 关联线面板：说明、备注、批注、颜色、端点、删除。 */
+function edgeInspectorHtml(edge) {
+  const from = getNode(state.doc, edge.from);
+  const to = getNode(state.doc, edge.to);
+  const current = edge.color ?? '';
+  const presets = LINE_COLORS;
+  return `
+    <div class="insp-scroll">
+      <section class="field">
+        <div class="edge-head">
+          <span class="lab">关联线</span>
+          <span class="edge-chip">${esc(edge.id)}</span>
+        </div>
+        <div class="edge-ends">
+          <span class="edge-end" title="起点">${esc(from?.text ?? edge.from)}</span>
+          <span class="edge-arrow" aria-hidden="true">→</span>
+          <span class="edge-end" title="终点">${esc(to?.text ?? edge.to)}</span>
+        </div>
+      </section>
+      <section class="field">
+        <label class="lab" for="edge-label">说明</label>
+        <input class="input" id="edge-label" value="${esc(edge.label ?? '')}" maxlength="120" placeholder="这条线是什么意思，比如「依赖」「需要核对」" autocomplete="off">
+      </section>
+      <section class="field">
+        <label class="lab" for="edge-note">备注</label>
+        <textarea class="input textarea" id="edge-note" rows="3" placeholder="给自己看的补充说明…">${esc(edge.note ?? '')}</textarea>
+      </section>
+      <section class="field">
+        <div class="annotation-head">
+          <span class="lab">批注 <span class="lab-tag">给 AI 看</span></span>
+          ${edge.annotation ? '<button type="button" class="btn ghost xs" data-act="edge-annotation-clear">清空</button>' : ''}
+        </div>
+        <textarea class="input textarea annotation-input${edge.annotation ? ' has-value' : ''}" id="edge-annotation" rows="3" maxlength="4000" placeholder="想让 AI 对这条关联做什么？例如：这条依赖关系已经不成立了，删掉">${esc(edge.annotation ?? '')}</textarea>
+        <p class="hint annotation-hint">AI 读取导图时会先看到关联线上的批注，改完会清空。带批注的关联线是蓝色虚线。</p>
+      </section>
+      <section class="field">
+        <span class="lab">颜色</span>
+        <div class="swatches sm">
+          ${presets
+            .map(
+              (color) =>
+                `<button type="button" class="swatch${current === color.value ? ' is-active' : ''}" style="--sw:${color.value}" data-act="edge-style" data-value="${color.value}" title="${color.name}"></button>`,
+            )
+            .join('')}
+          <label class="swatch custom" title="自定义颜色">
+            <input type="color" data-act="edge-color-custom" value="${current || '#be123c'}">
+          </label>
+          <button type="button" class="swatch clear${current ? '' : ' is-active'}" data-act="edge-style" data-value="" title="清除颜色">${ICON.slash}</button>
+        </div>
+      </section>
+      <section class="block">
+        <span class="lab">操作</span>
+        <div class="struct-grid">
+          <button type="button" class="btn sm" data-act="edge-reverse">反向</button>
+          <button type="button" class="btn sm danger" data-act="edge-remove">删除关联</button>
+        </div>
+      </section>
+    </div>`;
 }
 
 function emptyInspectorHtml() {
@@ -787,6 +858,12 @@ function nodeInspectorHtml(node) {
           <button type="button" class="btn sm danger" data-act="remove-node"${node.parent ? '' : ' disabled title="根节点不能删除"'}>删除节点</button>
         </div>
       </section>
+      <section class="block">
+        <div class="edge-cta">
+          <span class="hint">连到另一个节点？</span>
+          <button type="button" class="btn primary sm" data-act="start-link">加关联线…</button>
+        </div>
+      </section>
       <section class="meta-block">
         <div class="meta-row"><span>节点 ID</span><button type="button" class="id-chip" data-act="copy-id" title="点击复制节点 ID">${esc(node.id)}</button></div>
         <div class="meta-row"><span>层级 / 子节点</span><span>第 ${depth + 1} 层 · ${kids} 个子节点</span></div>
@@ -914,8 +991,27 @@ function onCanvasPointerDown(event) {
   drag.pointerId = event.pointerId;
 
   const group = event.target.closest?.('g[data-node-id]');
+  const edgeGroup = event.target.closest?.('g.mm-edge');
   const nodeId = group?.dataset.nodeId ?? null;
   const viewport = $('#canvas-viewport');
+
+  // 正在连线：点节点=建立关联，点空白=取消
+  if (state.linkFrom) {
+    if (nodeId) {
+      finishLink(nodeId);
+      return;
+    }
+    cancelLink();
+    return;
+  }
+
+  // 点到关联线（或它的标签）：选中这条线
+  if (edgeGroup && !nodeId) {
+    drag.mode = 'edge';
+    drag.edgeId = edgeGroup.dataset.edgeId;
+    selectEdge(drag.edgeId);
+    return;
+  }
 
   if (nodeId) {
     const layoutNode = getLayoutNode(nodeId);
@@ -936,6 +1032,7 @@ function onCanvasPointerDown(event) {
   }
 
   drag.mode = 'pan';
+  if (state.selectedEdgeId) clearEdgeSelection();
   try {
     viewport.setPointerCapture(event.pointerId);
   } catch {
@@ -1200,9 +1297,30 @@ async function redo() {
   }
 }
 
+function selectEdge(edgeId) {
+  if (!state.doc) return;
+  const edge = (state.doc.edges ?? []).find((item) => item.id === edgeId);
+  if (!edge) return;
+  state.selectedEdgeId = edgeId;
+  state.selectedId = null;
+  applySelectionClass();
+  renderInspector(true);
+  renderStatusbar();
+  if (isMobile()) $('#app').classList.remove('inspector-collapsed');
+}
+
+function clearEdgeSelection() {
+  if (!state.selectedEdgeId) return;
+  state.selectedEdgeId = null;
+  applySelectionClass();
+  renderInspector(true);
+  renderStatusbar();
+}
+
 function selectNode(id, { reveal = false } = {}) {
   if (!state.doc || !getNode(state.doc, id)) return;
   state.selectedId = id;
+  state.selectedEdgeId = null;
   applySelectionClass();
   renderInspector(true);
   renderStatusbar();
@@ -1971,6 +2089,41 @@ function saveNoteNow(value) {
 
 const STYLE_LABELS = { color: '模块颜色', textColor: '字体颜色', lineColor: '连线颜色' };
 
+const EDGE_LABELS = { label: '关联线说明', note: '关联线备注', annotation: '关联线批注' };
+let edgeTimer = null;
+
+function scheduleEdgeFieldSave(field, value) {
+  const edgeId = state.selectedEdgeId;
+  if (!edgeId) return;
+  if (edgeTimer) clearTimeout(edgeTimer);
+  edgeTimer = setTimeout(() => {
+    edgeTimer = null;
+    saveEdgeField(edgeId, field, value);
+  }, 650);
+}
+
+function saveEdgeField(edgeId, field, value, { immediate = false } = {}) {
+  const edge = state.doc?.edges?.find((item) => item.id === edgeId);
+  if (!edge) return;
+  if ((edge[field] ?? '') === String(value).trim()) return;
+  runOps([{ op: 'updateEdge', id: edgeId, [field]: value }], { label: EDGE_LABELS[field] ?? '修改关联线' });
+  if (immediate) {
+    /* runOps 会重绘检查器 */
+  }
+}
+
+function flushEdgeSaves() {
+  const active = document.activeElement;
+  if (!active || !active.closest?.('#inspector')) return;
+  const field = { 'edge-label': 'label', 'edge-note': 'note', 'edge-annotation': 'annotation' }[active.id];
+  if (!field) return;
+  if (edgeTimer) {
+    clearTimeout(edgeTimer);
+    edgeTimer = null;
+  }
+  saveEdgeField(state.selectedEdgeId, field, active.value);
+}
+
 /** 改字号、字体、框宽高。字号和字体跟随作用范围，框尺寸只改当前节点。 */
 async function updateTypography(field, value) {
   const node = state.doc && getNode(state.doc, state.selectedId);
@@ -2097,6 +2250,91 @@ function updateLinkGuess() {
   hint.textContent = `识别为${KIND_LABELS[guessLinkKind(state.linkDraft.target)] ?? '文件'}`;
 }
 
+/* ---- 关联线：选中、编辑、新建 ---- */
+
+function selectedEdge() {
+  return state.doc?.edges?.find((edge) => edge.id === state.selectedEdgeId) ?? null;
+}
+
+async function updateSelectedEdge(patch, label) {
+  const edge = selectedEdge();
+  if (!edge) return;
+  await runOps([{ op: 'updateEdge', id: edge.id, ...patch }], { label });
+}
+
+async function removeSelectedEdge() {
+  const edge = selectedEdge();
+  if (!edge) return;
+  const from = getNode(state.doc, edge.from)?.text ?? edge.from;
+  const to = getNode(state.doc, edge.to)?.text ?? edge.to;
+  const ok = await askConfirm({
+    title: '删除关联线',
+    message: `确定删除「${from} → ${to}」这条关联线吗？`,
+    confirmText: '删除',
+    danger: true,
+  });
+  if (!ok) return;
+  state.selectedEdgeId = null;
+  await runOps([{ op: 'removeEdge', id: edge.id }], { label: '删除关联线' });
+}
+
+async function reverseSelectedEdge() {
+  const edge = selectedEdge();
+  if (!edge) return;
+  await updateSelectedEdge({ from: edge.to, to: edge.from }, '反转关联线方向');
+}
+
+/** 进入连线模式：下一个点击的节点作为终点。 */
+function startLink() {
+  const node = state.doc && getNode(state.doc, state.selectedId);
+  if (!node) return;
+  state.linkFrom = node.id;
+  applySelectionClass();
+  showLinkHint(node.text);
+  toast('点画布上另一个节点来建立关联，Esc 取消');
+}
+
+async function finishLink(targetId) {
+  const fromId = state.linkFrom;
+  const from = getNode(state.doc, fromId);
+  const to = getNode(state.doc, targetId);
+  hideLinkHint();
+  state.linkFrom = null;
+  applySelectionClass();
+  if (!from || !to || from.id === to.id) return;
+  const exists = (state.doc.edges ?? []).some(
+    (edge) => (edge.from === from.id && edge.to === to.id) || (edge.from === to.id && edge.to === from.id),
+  );
+  if (exists) {
+    toast('这两个节点之间已经有关联线了', { tone: 'warn' });
+    return;
+  }
+  const results = await runOps([{ op: 'addEdge', from: from.id, to: to.id }], { label: '新建关联线' });
+  const created = results?.[0];
+  if (created?.id) selectEdge(created.id);
+}
+
+function cancelLink() {
+  if (!state.linkFrom) return;
+  state.linkFrom = null;
+  hideLinkHint();
+  applySelectionClass();
+}
+
+function showLinkHint(fromText) {
+  const hint = $('#link-hint');
+  if (!hint) return;
+  $('#link-hint-text').textContent = `从「${fromText}」连出去：点另一个节点完成，Esc 取消`;
+  hint.hidden = false;
+  $('#canvas-viewport').classList.add('is-linking');
+}
+
+function hideLinkHint() {
+  const hint = $('#link-hint');
+  if (hint) hint.hidden = true;
+  $('#canvas-viewport').classList.remove('is-linking');
+}
+
 async function handleInspectorAction(act, element) {
   const node = state.doc && getNode(state.doc, state.selectedId);
   switch (act) {
@@ -2123,6 +2361,21 @@ async function handleInspectorAction(act, element) {
       break;
     case 'annotation-clear':
       clearAnnotation();
+      break;
+    case 'start-link':
+      startLink();
+      break;
+    case 'edge-style':
+      updateSelectedEdge({ color: element.dataset.value ?? '' }, element.dataset.value ? '设置关联线颜色' : '清除关联线颜色');
+      break;
+    case 'edge-annotation-clear':
+      updateSelectedEdge({ annotation: '' }, '清空关联线批注');
+      break;
+    case 'edge-reverse':
+      reverseSelectedEdge();
+      break;
+    case 'edge-remove':
+      removeSelectedEdge();
       break;
     case 'style':
       updateStyle(element.dataset.field, element.dataset.value ?? '');
@@ -2554,6 +2807,7 @@ function bindEvents() {
     toast('已恢复默认栏宽', { tone: 'ok' });
     if (state.doc) applyTransform();
   });
+  $('#btn-link-cancel').addEventListener('click', cancelLink);
   $('#btn-settings').addEventListener('click', openSettingsDialog);
   $('#btn-settings-side').addEventListener('click', openSettingsDialog);
   $('#btn-export').addEventListener('click', (event) => {
@@ -2730,7 +2984,10 @@ function bindEvents() {
   });
   inspector.addEventListener('input', (event) => {
     const target = event.target;
-    if (target.id === 'insp-note') scheduleNoteSave(target.value);
+    if (target.id === 'edge-label') scheduleEdgeFieldSave('label', target.value);
+    else if (target.id === 'edge-note') scheduleEdgeFieldSave('note', target.value);
+    else if (target.id === 'edge-annotation') scheduleEdgeFieldSave('annotation', target.value);
+    else if (target.id === 'insp-note') scheduleNoteSave(target.value);
     else if (target.id === 'insp-annotation') scheduleAnnotationSave(target.value);
     else if (target.id === 'link-target') {
       state.linkDraft.target = target.value;
@@ -2741,6 +2998,10 @@ function bindEvents() {
   });
   inspector.addEventListener('change', (event) => {
     const target = event.target;
+    if (target.dataset?.act === 'edge-color-custom') {
+      updateSelectedEdge({ color: target.value }, '设置关联线颜色');
+      return;
+    }
     if (target.dataset?.act === 'style-custom') {
       updateStyle(target.dataset.field, target.value);
       return;
@@ -2763,6 +3024,7 @@ function bindEvents() {
     else if (target.id === 'link-kind') state.linkDraft.kind = target.value;
   });
   inspector.addEventListener('focusout', () => {
+    flushEdgeSaves();
     setTimeout(() => {
       if (!isInspectorTyping() && state.doc) renderInspector();
     }, 0);
@@ -2948,7 +3210,8 @@ function onGlobalKeydown(event) {
     case 'Backspace':
     case 'Delete':
       event.preventDefault();
-      deleteSelected();
+      if (state.selectedEdgeId) removeSelectedEdge();
+      else deleteSelected();
       break;
     case 'ArrowUp':
       event.preventDefault();
@@ -2976,8 +3239,12 @@ function onGlobalKeydown(event) {
       if (state.selectedId) startEdit(state.selectedId);
       break;
     case 'Escape':
-      if (!$('#preview-drawer').hidden) {
+      if (state.linkFrom) {
+        cancelLink();
+      } else if (!$('#preview-drawer').hidden) {
         closePreview();
+      } else if (state.selectedEdgeId) {
+        clearEdgeSelection();
       } else if (state.selectedId) {
         state.selectedId = null;
         applySelectionClass();

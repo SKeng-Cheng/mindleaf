@@ -2,7 +2,7 @@
  * SVG 渲染器：把 layoutDoc 的结果画成一张完整 SVG 字符串。
  * 网页端直接 innerHTML 复用；导出 PNG/JPG/PDF 也走这里，保证"看到的就是导出的"。
  */
-import { layoutDoc, relationLabelSize, relationPath, treePath, LAYOUT_DEFAULTS } from './layout.mjs';
+import { layoutDoc, relationLabelPoint, relationLabelSize, relationPath, treePath, LAYOUT_DEFAULTS } from './layout.mjs';
 
 export const esc = (value) =>
   String(value ?? '')
@@ -56,6 +56,7 @@ export function renderSvg(layout, options = {}) {
 
   defs.push(
     `<marker id="${prefix}-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${palette.relation}"/></marker>`,
+    `<marker id="${prefix}-arrow-annotation" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${palette.annotation}"/></marker>`,
   );
 
   out.push(
@@ -75,9 +76,25 @@ export function renderSvg(layout, options = {}) {
   }
   for (const edge of layout.edges) {
     if (edge.kind !== 'relation') continue;
+    const stroke = edge.color || palette.relation;
+    const width = 1.7 * layout.scale;
+    const dash = `${num(7 * layout.scale)} ${num(5 * layout.scale)}`;
+    const d = relationPath(edge);
+    // 一条线三层：透明加粗的命中区（方便点击）、虚线本体、箭头
     out.push(
-      `<path d="${relationPath(edge)}" fill="none" stroke="${palette.relation}" stroke-width="${num(1.7 * layout.scale)}" stroke-dasharray="${num(7 * layout.scale)} ${num(5 * layout.scale)}" stroke-linecap="round" marker-end="url(#${prefix}-arrow)" opacity="0.92"/>`,
+      `<g class="mm-edge" data-edge-id="${esc(edge.edgeId)}"${edge.hasAnnotation ? ' data-edge-annotation="1"' : ''}>`,
+      `<path class="mm-edge-hit" d="${d}" fill="none" stroke="transparent" stroke-width="${num(16 * layout.scale)}" pointer-events="stroke"/>`,
+      `<path class="mm-edge-line" d="${d}" fill="none" stroke="${stroke}" stroke-width="${num(width)}" stroke-dasharray="${dash}" stroke-linecap="round" opacity="0.92"/>`,
+      `<path class="mm-edge-arrow" d="${d}" fill="none" stroke="none" marker-end="url(#${prefix}-${edge.hasAnnotation ? 'arrow-annotation' : 'arrow'})"/>`,
     );
+    if (edge.hasAnnotation) {
+      // 关联线上的批注：箭头也用蓝色，和节点的蓝点呼应
+      const point = relationLabelPoint(edge);
+      out.push(
+        `<circle data-edge-annotation-dot="1" cx="${num(point.x)}" cy="${num(point.y - (12.5 * layout.scale) * 1.1)}" r="${num(3.4 * layout.scale)}" fill="${palette.annotation}" stroke="${palette.canvas}" stroke-width="${num(1.2 * layout.scale)}"/>`,
+      );
+    }
+    out.push('</g>');
   }
 
   for (const node of layout.nodes) {
@@ -135,9 +152,10 @@ export function renderSvg(layout, options = {}) {
     if (edge.kind !== 'relation' || !edge.label) continue;
     const size = relationLabelSize(edge.label, layout.scale);
     const box = edge.labelBox ?? { x: 0, y: 0, ...size };
+    const stroke = edge.color || palette.relation;
     out.push(
-      `<rect x="${num(box.x)}" y="${num(box.y)}" width="${num(box.width)}" height="${num(box.height)}" rx="${num(box.height / 2)}" fill="${palette.canvas}" stroke="${palette.relation}" stroke-width="${num(layout.scale)}"/>`,
-      `<text x="${num(box.x + box.width / 2)}" y="${num(box.y + box.height / 2 + size.fontSize * 0.36)}" text-anchor="middle" font-size="${num(size.fontSize)}" fill="${palette.relation}" font-weight="600">${esc(edge.label)}</text>`,
+      `<rect x="${num(box.x)}" y="${num(box.y)}" width="${num(box.width)}" height="${num(box.height)}" rx="${num(box.height / 2)}" fill="${palette.canvas}" stroke="${stroke}" stroke-width="${num(layout.scale)}"/>`,
+      `<text x="${num(box.x + box.width / 2)}" y="${num(box.y + box.height / 2 + size.fontSize * 0.36)}" text-anchor="middle" font-size="${num(size.fontSize)}" fill="${stroke}" font-weight="600">${esc(edge.label)}</text>`,
     );
   }
   out.push('</svg>');

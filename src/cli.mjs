@@ -47,7 +47,10 @@ const HELP = `${c.bold('mindleaf')} —— AI 友好的本地思维导图（零�
   mm fonts                           列出可用字体
   mm rm <导图> <节点>                 删除节点（含子树）
   mm mv <导图> <节点> <新父节点>       移动节点
-  mm edge <导图> <起点> <终点> --label 加关联线
+  mm edge <导图> <起点> <终点> [--label] [--color] [--note] [--annotation]   加关联线
+  mm edges [导图]                    列出关联线（带 id）
+  mm edge-set <导图> <关联线id> [...]  改关联线（--label/--color/--note/--annotation/--from/--to）
+  mm edge-rm <导图> <关联线id>        删除关联线
   mm export <导图> -f png|jpg|pdf|svg|md|json|html [-o 路径] [--scale 2]
   mm import <导图|new> <文件.md>      从 Markdown 导入
   mm log <导图> [--since 0]           查看改动历史（含人类在网页里的修改）
@@ -92,6 +95,9 @@ const parse = (argv) => {
       height: { type: 'string' },
       'line-color': { type: 'string' },
       annotation: { type: 'string' },
+      'edge-id': { type: 'string' },
+      from: { type: 'string' },
+      to: { type: 'string' },
       subtree: { type: 'boolean' },
       link: { type: 'string', multiple: true },
       label: { type: 'string' },
@@ -513,8 +519,70 @@ function cmdEdge(values, positionals) {
   const { doc: current } = store.read(need(positionals, 0, '导图'));
   const from = resolveNodeRef(current, need(positionals, 1, '起点'));
   const to = resolveNodeRef(current, need(positionals, 2, '终点'));
-  const { doc } = store.applyOps(positionals[0], [{ op: 'addEdge', from: from.id, to: to.id, label: values.label }], { by: 'cli' });
-  console.log(`${c.green('✔')} 关联线 ${from.text} → ${to.text}${c.dim(`  rev ${doc.rev}`)}`);
+  const { doc, results } = store.applyOps(
+    positionals[0],
+    [{ op: 'addEdge', from: from.id, to: to.id, label: values.label, color: values.color, note: values.note, annotation: values.annotation }],
+    { by: 'cli' },
+  );
+  console.log(`${c.green('✔')} 关联线 ${results[0]?.id} ${from.text} → ${to.text}${c.dim(`  rev ${doc.rev}`)}`);
+}
+
+function printEdgeLine(edge, doc) {
+  const from = getNode(doc, edge.from);
+  const to = getNode(doc, edge.to);
+  const bits = [c.dim(edge.id), `「${from?.text ?? edge.from}」`, c.dim('→'), `「${to?.text ?? edge.to}」`];
+  if (edge.label) bits.push(c.bold(edge.label));
+  if (edge.color) bits.push(c.dim(edge.color));
+  console.log(`  ${bits.join(' ')}`);
+  if (edge.note) console.log(c.dim(`      备注: ${edge.note.replace(/\n/g, ' ')}`));
+  if (edge.annotation) console.log(c.yellow(`      ⚑ 批注: ${edge.annotation.replace(/\n/g, ' ')}`));
+}
+
+function cmdEdges(values, positionals) {
+  const store = makeStore(values);
+  const targets = positionals[0] ? [store.read(positionals[0])] : store.list().map((item) => store.read(item.slug));
+  let total = 0;
+  for (const target of targets) {
+    const edges = target.doc.edges ?? [];
+    if (!edges.length) continue;
+    total += edges.length;
+    console.log(c.bold(`${target.doc.title}${c.dim(`  (slug: ${target.slug})`)}`));
+    for (const edge of edges) printEdgeLine(edge, target.doc);
+    console.log();
+  }
+  if (!total) console.log(c.dim('还没有关联线。用 mm edge <导图> <起点> <终点> 新建。'));
+}
+
+function cmdEdgeSet(values, positionals) {
+  const store = makeStore(values);
+  const map = need(positionals, 0, '导图');
+  const { doc: current } = store.read(map);
+  const edgeId = values['edge-id'] ?? positionals[1];
+  if (!edgeId) throw new StoreError('缺少关联线 id（用 mm edges 看）', 'invalid_argument');
+  const edge = (current.edges ?? []).find((item) => item.id === edgeId);
+  if (!edge) throw new StoreError(`找不到关联线：${edgeId}`, 'not_found');
+  const patch = { op: 'updateEdge', id: edge.id };
+  for (const key of ['label', 'color', 'note', 'annotation']) {
+    if (values[key] !== undefined) patch[key] = values[key];
+  }
+  if (values.from !== undefined) patch.from = resolveNodeRef(current, values.from).id;
+  if (values.to !== undefined) patch.to = resolveNodeRef(current, values.to).id;
+  if (Object.keys(patch).length <= 2) {
+    throw new StoreError('没有要修改的内容（--label / --color / --note / --annotation / --from / --to）', 'invalid_argument');
+  }
+  const { doc } = store.applyOps(map, [patch], { by: 'cli' });
+  const updated = doc.edges.find((item) => item.id === edge.id);
+  console.log(`${c.green('✔')} 已更新关联线 ${c.bold(updated.id)}${c.dim(`  rev ${doc.rev}`)}`);
+  printEdgeLine(updated, doc);
+}
+
+function cmdEdgeRemove(values, positionals) {
+  const store = makeStore(values);
+  const map = need(positionals, 0, '导图');
+  const edgeId = values['edge-id'] ?? positionals[1];
+  if (!edgeId) throw new StoreError('缺少关联线 id（用 mm edges 看）', 'invalid_argument');
+  const { doc } = store.applyOps(map, [{ op: 'removeEdge', id: edgeId }], { by: 'cli' });
+  console.log(`${c.green('✔')} 已删除关联线 ${edgeId}${c.dim(`  rev ${doc.rev}`)}`);
 }
 
 async function cmdExport(values, positionals) {
@@ -794,6 +862,16 @@ export async function main(argv = process.argv.slice(2)) {
     case 'edge':
     case 'link':
       cmdEdge(values, positionals);
+      return 0;
+    case 'edges':
+      cmdEdges(values, positionals);
+      return 0;
+    case 'edge-set':
+      cmdEdgeSet(values, positionals);
+      return 0;
+    case 'edge-rm':
+    case 'edge-remove':
+      cmdEdgeRemove(values, positionals);
       return 0;
     case 'export':
       await cmdExport(values, positionals);

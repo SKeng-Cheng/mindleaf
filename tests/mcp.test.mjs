@@ -300,6 +300,52 @@ test('MCP: 字号、字体、框尺寸与 list_fonts', async (t) => {
   assert.match(blocked.text, /只能改颜色/);
 });
 
+test('MCP: 关联线可以改说明/颜色/备注/批注、能列出、能删', async (t) => {
+  const projectDir = tempProject();
+  const mcp = await startMcp(projectDir);
+  t.after(() => mcp.close());
+  await mcp.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+
+  await mcp.callTool('mindleaf_create_map', { title: '关联图', rootText: '根' });
+  await mcp.callTool('mindleaf_add_node', { map: '关联图', text: 'A' });
+  await mcp.callTool('mindleaf_add_node', { map: '关联图', text: 'B' });
+  const added = await mcp.callTool('mindleaf_add_edge', { map: '关联图', from: 'A', to: 'B', label: '核对' });
+  const edgeId = /e_[a-z0-9]+/.exec(added.text)?.[0];
+  assert.ok(edgeId, added.text);
+
+  // read_map 里要能看到关联线清单（带 id）
+  const read = await mcp.callTool('mindleaf_read_map', { map: '关联图' });
+  assert.match(read.text, /关联线（1 条/);
+  assert.match(read.text, new RegExp(edgeId));
+
+  const updated = await mcp.callTool('mindleaf_update_edge', {
+    map: '关联图',
+    id: edgeId,
+    label: '核对解析',
+    color: '#be123c',
+    note: '给自己看',
+    annotation: '这条依赖过时了',
+  });
+  assert.equal(updated.isError, false, updated.text);
+
+  const json = await mcp.callTool('mindleaf_read_map', { map: '关联图', format: 'json' });
+  const edge = JSON.parse(json.text.slice(json.text.indexOf('{'))).edges.find((item) => item.id === edgeId);
+  assert.deepEqual(
+    { label: edge.label, color: edge.color, note: edge.note, annotation: edge.annotation },
+    { label: '核对解析', color: '#be123c', note: '给自己看', annotation: '这条依赖过时了' },
+  );
+
+  // 关联线批注也要出现在 list_annotations 里
+  const annotations = await mcp.callTool('mindleaf_list_annotations', { map: '关联图' });
+  assert.match(annotations.text, /关联线/);
+  assert.match(annotations.text, /这条依赖过时了/);
+
+  const removed = await mcp.callTool('mindleaf_remove_edge', { map: '关联图', id: edgeId });
+  assert.equal(removed.isError, false, removed.text);
+  const after = await mcp.callTool('mindleaf_read_map', { map: '关联图', format: 'json' });
+  assert.equal(JSON.parse(after.text.slice(after.text.indexOf('{'))).edges.length, 0);
+});
+
 test('MCP: 批注 —— read_map 提示、list_annotations 汇总、改完能清空', async (t) => {
   const projectDir = tempProject();
   const mcp = await startMcp(projectDir);

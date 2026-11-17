@@ -50,6 +50,7 @@ is closed.
 | **Hover for notes** | rest the mouse on a node and its note pops up next to the cursor (delay configurable) |
 | **Tags + outline** | tag maps and filter by tag; switch the sidebar to an indented outline, click to jump, collapse in place |
 | **Styling** | box / text / line colours, font size, font, box width and height — apply to one node or a whole branch |
+| **Relations** | dashed links across branches; click one to edit its label, colour, note or annotation |
 | **Links** | attach workspace files, URLs or code line numbers, previewed right in the page |
 | **Templates + export** | ten built-in templates; export PNG / JPG / PDF / SVG / Markdown / JSON / HTML |
 
