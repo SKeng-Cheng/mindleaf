@@ -9,7 +9,7 @@
  *
  * 坐标：内部一律用"左上原点"的布局坐标，写出时翻成 PDF 的左下原点。
  */
-import { treeGeometry, relationGeometry, relationLabelPoint } from '../core/layout.mjs';
+import { treeGeometry, relationGeometry } from '../core/layout.mjs';
 
 const PT_PER_PX = 0.75; // CSS px(96dpi) -> pt(72dpi)
 
@@ -190,21 +190,6 @@ export function layoutToVectorPdf(layout, options = {}) {
       `${n(pxs(back.x - perp.x))} ${n(fy(back.y - perp.y))} l`,
       'f',
     );
-    if (edge.label) {
-      // 和 SVG 一致：标签压在线上的中点，先用底色盖住曲线再写字
-      const point = relationLabelPoint(edge);
-      const fontSize = 10.5 * scale;
-      const w = Math.max(fontSize * 2, estimateWidth(edge.label, fontSize) * 0.98 + 9 * scale);
-      const h = fontSize * 1.66;
-      ops.push(
-        `${colorOps(hexToRgb(palette.canvas))} rg`,
-        `${colorOps(relColor)} RG`,
-        `${n(Math.max(0.5, scale * 0.8))} w`,
-        ...roundedRectOps(pxs(point.x - w / 2), fy(point.y + h / 2), w, h, h / 2),
-        'B',
-      );
-      textOp(edge.label, point.x, point.y + fontSize * 0.36, fontSize, relColor, true);
-    }
   }
 
   // 节点
@@ -227,6 +212,22 @@ export function layoutToVectorPdf(layout, options = {}) {
     node.lines.forEach((line, index) => {
       textOp(line, node.x + node.width / 2, firstBaseline + index * (node.lineHeight ?? node.fontSize * 1.45), fontSize, ink, node.depth <= 1);
     });
+  }
+
+  // 关联线标签最后画：压在曲线和节点之上，不会被节点框挡住
+  for (const edge of layout.edges) {
+    if (edge.kind !== 'relation' || !edge.label) continue;
+    const box = edge.labelBox;
+    if (!box) continue;
+    const fontSize = box.fontSize ?? 12.5 * scale;
+    ops.push(
+      `${colorOps(hexToRgb(palette.canvas))} rg`,
+      `${colorOps(relColor)} RG`,
+      `${n(Math.max(0.5, scale * 0.8))} w`,
+      ...roundedRectOps(pxs(box.x), fy(box.y + box.height), pxs(box.width), pxs(box.height), pxs(box.height / 2)),
+      'B',
+    );
+    textOp(edge.label, box.x + box.width / 2, box.y + box.height / 2 + fontSize * 0.36, fontSize, relColor, true);
   }
 
   const content = ops.join('\n');

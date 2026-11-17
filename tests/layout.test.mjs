@@ -1,8 +1,9 @@
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { createDoc } from '../src/core/doc.mjs';
 import { addEdge, addNode, updateNode } from '../src/core/ops.mjs';
-import { layoutDoc, textWidth, wrapText, treePath, relationPath, relationGeometry, relationLabelPoint, THEMES } from '../src/core/layout.mjs';
+import { layoutDoc, textWidth, wrapText, treePath, relationPath, relationGeometry, relationLabelPoint, relationLabelPlacement, THEMES } from '../src/core/layout.mjs';
 import { renderSvg, docToSvg, esc } from '../src/core/svg.mjs';
 
 /** 近似相等（node:assert 没有 approximately） */
@@ -210,7 +211,7 @@ test('layoutDoc 关联线出现在 edges 里', () => {
   assert.ok(geometry.cp.y <= Math.min(geometry.p0.y, geometry.p2.y), '关联线应向上拱起');
 });
 
-test('关联线标签压在曲线的中点上（t=0.5），而不是飘在线的上方', () => {
+test('关联线标签默认落在曲线中点（t=0.5），而不是飘在线的上方', () => {
   const doc = sampleDoc();
   const a = doc.nodes[1];
   const b = doc.nodes[3];
@@ -229,22 +230,68 @@ test('关联线标签压在曲线的中点上（t=0.5），而不是飘在线的
   assert.ok(point.y > floatingY + 1, `标签应压在线上（${point.y}）而不是浮在上方（${floatingY}）`);
 });
 
-test('SVG 里关联线标签的底框中心就在线上，且盖住曲线', () => {
+test('标签位置会让开节点框：正中点被节点占住时沿曲线挪开', () => {
+  // 造一条竖直方向的关联线，然后在它的中点位置放一个"节点"
+  const edge = { from: { x: 100, y: 300 }, to: { x: 300, y: 300 }, label: '影响' };
+  const { cp } = relationGeometry(edge);
+  const mid = relationLabelPoint(edge);
+  const blocker = { x: mid.x - 25, y: mid.y - 15, width: 50, height: 30 };
+
+  const placement = relationLabelPlacement(edge, [blocker], 1);
+  assert.ok(placement.t !== 0.5, '中点被占时应该挪开');
+  assert.equal(placement.covered, false, '应该能找到不被压住的位置');
+  const overlaps =
+    placement.x < blocker.x + blocker.width &&
+    placement.x + placement.width > blocker.x &&
+    placement.y < blocker.y + blocker.height &&
+    placement.y + placement.height > blocker.y;
+  assert.equal(overlaps, false, '挪开之后不应再和节点框重叠');
+  // 挪开的位置仍然在曲线上
+  const onCurve = relationLabelPoint(edge, placement.t);
+  close(placement.x + placement.width / 2, onCurve.x, 0.01);
+  close(placement.y + placement.height / 2, onCurve.y, 0.01);
+  void cp;
+});
+
+test('示例图里所有关联线标签都不压住节点', () => {
+  const doc = JSON.parse(readFileSync(new URL('../examples/demo.mindmap.json', import.meta.url), 'utf8'));
+  const layout = layoutDoc(doc);
+  const labels = layout.edges.filter((edge) => edge.kind === 'relation' && edge.label);
+  assert.ok(labels.length > 0, '示例图里应有带标签的关联线');
+  for (const edge of labels) {
+    const box = edge.labelBox;
+    assert.ok(box, `${edge.label} 应该有 labelBox`);
+    for (const node of layout.nodes) {
+      const width = Math.min(box.x + box.width, node.x + node.width) - Math.max(box.x, node.x);
+      const height = Math.min(box.y + box.height, node.y + node.height) - Math.max(box.y, node.y);
+      assert.ok(
+        !(width > 0 && height > 0),
+        `标签「${edge.label}」压住了节点「${node.text}」：重叠 ${width.toFixed(1)}×${height.toFixed(1)}`,
+      );
+    }
+  }
+});
+
+test('SVG 里关联线标签画在节点之后（不会被框挡住），底框实心', () => {
   const doc = sampleDoc();
   const a = doc.nodes[1];
   const b = doc.nodes[3];
   addEdge(doc, { from: a.id, to: b.id, label: '影响' });
   const layout = layoutDoc(doc);
   const relation = layout.edges.find((edge) => edge.kind === 'relation');
-  const point = relationLabelPoint(relation);
+  const box = relation.labelBox;
   const svg = docToSvg(doc);
 
-  // 找到标签底框：rx 半圆 + relation 色描边，紧跟着标签文字
+  // 标签必须在最后一个节点组之后
+  assert.ok(svg.indexOf('>影响<') > svg.lastIndexOf('</g>'), '标签应画在所有节点之后');
+
   const match = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" rx="(?:[\d.]+)" fill="[^"]+" stroke="[^"]+" stroke-width="(?:[\d.]+)"\/><text x="(?:[\d.]+)" y="(?:[\d.]+)"[^>]*>影响<\/text>/.exec(svg);
   assert.ok(match, '应能找到关联线标签的底框');
   const [x, y, w, h] = match.slice(1).map(Number);
-  close(x + w / 2, point.x, 1);
-  close(y + h / 2, point.y, 1);
+  close(x, box.x, 0.6);
+  close(y, box.y, 0.6);
+  close(w, box.width, 0.6);
+  close(h, box.height, 0.6);
   // 底框必须是实心（没有 opacity 半透明），否则盖不住曲线
   assert.ok(!/rx="(?:[\d.]+)" fill="[^"]+" stroke="[^"]+" stroke-width="(?:[\d.]+)" opacity=/.test(svg), '标签底框不应是半透明');
 });

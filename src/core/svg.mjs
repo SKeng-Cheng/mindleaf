@@ -2,7 +2,7 @@
  * SVG 渲染器：把 layoutDoc 的结果画成一张完整 SVG 字符串。
  * 网页端直接 innerHTML 复用；导出 PNG/JPG/PDF 也走这里，保证"看到的就是导出的"。
  */
-import { layoutDoc, relationLabelPoint, relationPath, textWidth, treePath, LAYOUT_DEFAULTS } from './layout.mjs';
+import { layoutDoc, relationLabelSize, relationPath, treePath, LAYOUT_DEFAULTS } from './layout.mjs';
 
 export const esc = (value) =>
   String(value ?? '')
@@ -78,18 +78,6 @@ export function renderSvg(layout, options = {}) {
     out.push(
       `<path d="${relationPath(edge)}" fill="none" stroke="${palette.relation}" stroke-width="${num(1.7 * layout.scale)}" stroke-dasharray="${num(7 * layout.scale)} ${num(5 * layout.scale)}" stroke-linecap="round" marker-end="url(#${prefix}-arrow)" opacity="0.92"/>`,
     );
-    if (edge.label) {
-      // 标签就压在线上的中点，用不透明的底把这一段曲线盖住（盖在线的上层）
-      const point = relationLabelPoint(edge);
-      const padding = 5 * layout.scale;
-      const fontSize = 12.5 * layout.scale;
-      const w = Math.max(fontSize * 2, textWidth(edge.label, fontSize) + padding * 2);
-      const h = fontSize * 1.66;
-      out.push(
-        `<rect x="${num(point.x - w / 2)}" y="${num(point.y - h / 2)}" width="${num(w)}" height="${num(h)}" rx="${num(h / 2)}" fill="${palette.canvas}" stroke="${palette.relation}" stroke-width="${num(layout.scale)}"/>`,
-        `<text x="${num(point.x)}" y="${num(point.y + fontSize * 0.36)}" text-anchor="middle" font-size="${num(fontSize)}" fill="${palette.relation}" font-weight="600">${esc(edge.label)}</text>`,
-      );
-    }
   }
 
   for (const node of layout.nodes) {
@@ -134,6 +122,16 @@ export function renderSvg(layout, options = {}) {
     if (href) out.push('</a>');
   }
 
+  // 关联线标签最后画：压在曲线和节点之上，不会"躲在框后面"
+  for (const edge of layout.edges) {
+    if (edge.kind !== 'relation' || !edge.label) continue;
+    const size = relationLabelSize(edge.label, layout.scale);
+    const box = edge.labelBox ?? { x: 0, y: 0, ...size };
+    out.push(
+      `<rect x="${num(box.x)}" y="${num(box.y)}" width="${num(box.width)}" height="${num(box.height)}" rx="${num(box.height / 2)}" fill="${palette.canvas}" stroke="${palette.relation}" stroke-width="${num(layout.scale)}"/>`,
+      `<text x="${num(box.x + box.width / 2)}" y="${num(box.y + box.height / 2 + size.fontSize * 0.36)}" text-anchor="middle" font-size="${num(size.fontSize)}" fill="${palette.relation}" font-weight="600">${esc(edge.label)}</text>`,
+    );
+  }
   out.push('</svg>');
   return out.join('');
 }

@@ -347,6 +347,11 @@ export function layoutDoc(doc, options = {}) {
     edge.from = { x: (edge.from.x - minX + padding) * scale, y: (edge.from.y - minY + padding) * scale };
     edge.to = { x: (edge.to.x - minX + padding) * scale, y: (edge.to.y - minY + padding) * scale };
   }
+  // 关联线标签的位置：避开节点框，渲染时再画在节点之上（不会被遮住）
+  for (const edge of edges) {
+    if (edge.kind !== 'relation' || !edge.label) continue;
+    edge.labelBox = relationLabelPlacement(edge, nodes, scale);
+  }
 
   return {
     width: Math.max(1, Math.ceil((contentWidth + padding * 2) * scale)),
@@ -401,13 +406,65 @@ export function relationPath(edge) {
   return `M ${r2(p0.x)} ${r2(p0.y)} Q ${r2(cp.x)} ${r2(cp.y)}, ${r2(p2.x)} ${r2(p2.y)}`;
 }
 
-/** 关联线标签位置：二次贝塞尔 t=0.5 的那个点，也就是线本身的中点。 */
-export function relationLabelPoint(edge) {
-  const { p0, cp, p2 } = relationGeometry(edge);
+/** 二次贝塞尔在 t 处的点。 */
+function quadPoint(p0, cp, p2, t) {
+  const mt = 1 - t;
   return {
-    x: (p0.x + 2 * cp.x + p2.x) / 4,
-    y: (p0.y + 2 * cp.y + p2.y) / 4,
+    x: mt * mt * p0.x + 2 * mt * t * cp.x + t * t * p2.x,
+    y: mt * mt * p0.y + 2 * mt * t * cp.y + t * t * p2.y,
   };
+}
+
+/** 关联线标签中心：默认取 t=0.5（线本身的中点）。 */
+export function relationLabelPoint(edge, t = 0.5) {
+  const { p0, cp, p2 } = relationGeometry(edge);
+  return quadPoint(p0, cp, p2, t);
+}
+
+/** 标签尺寸（字号、内边距与渲染层保持一致）。 */
+export function relationLabelSize(label, scale = 1) {
+  const fontSize = 12.5 * scale;
+  const padding = 5 * scale;
+  return {
+    fontSize,
+    width: Math.max(fontSize * 2, textWidth(label ?? '', fontSize) + padding * 2),
+    height: fontSize * 1.66,
+  };
+}
+
+function overlapArea(a, b) {
+  const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const height = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+  return width > 0 && height > 0 ? width * height : 0;
+}
+
+/**
+ * 给关联线标签挑位置：沿着曲线从 t=0.5 往两边试，选第一个不压住节点的位置。
+ * 都压住时就选重叠面积最小的那个（渲染层再把标签画在节点之上，保证不会"躲在框后面"）。
+ */
+export function relationLabelPlacement(edge, nodes, scale = 1, gap = 2) {
+  const { p0, cp, p2 } = relationGeometry(edge);
+  const { fontSize, width, height } = relationLabelSize(edge.label, scale);
+  const candidates = [0.5, 0.45, 0.55, 0.4, 0.6, 0.35, 0.65, 0.3, 0.7, 0.25, 0.75, 0.2, 0.8, 0.15, 0.85];
+  let best = null;
+  for (const t of candidates) {
+    const point = quadPoint(p0, cp, p2, t);
+    const box = { x: point.x - width / 2, y: point.y - height / 2, width, height };
+    const hit = nodes.reduce(
+      (sum, node) =>
+        sum +
+        overlapArea(box, {
+          x: node.x - gap * scale,
+          y: node.y - gap * scale,
+          width: node.width + gap * scale * 2,
+          height: node.height + gap * scale * 2,
+        }),
+      0,
+    );
+    if (!best || hit < best.hit) best = { t, box, hit };
+    if (hit === 0) break;
+  }
+  return { ...best.box, fontSize, t: best?.t ?? 0.5, covered: best.hit > 0 };
 }
 
 export function palette(themeName) {
