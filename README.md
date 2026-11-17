@@ -233,7 +233,10 @@ mm list --tag 项目                    # 只看带这个标签的图
 相对路径从 `mindleaf.json` 的 `workspaceDir` 开始算，默认是项目目录。预览窗口旁边还有
 "在 Finder 中显示"（Windows 是资源管理器），省得自己去翻文件夹。
 
-![导出的图，节点右上角的小圆点表示挂了链接](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/example-export.png)
+![导出的图，节点右侧的小灰点表示挂了链接](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/example-export.png)
+
+节点右侧的小灰点就是链接标记：**一个点代表一条链接，最多画 3 个**。所以看到 2 个灰点，说明这个节点挂了 2 条链接。
+（画布的左侧小点另有含义：蓝色 = 有批注。备注不画点，靠鼠标悬停看。）
 
 ## 八、十个开箱能用的模板
 

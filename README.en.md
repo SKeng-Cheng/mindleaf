@@ -252,7 +252,11 @@ Switch the sidebar to "大纲" (outline) and you get exactly that:
 Relative paths start from `workspaceDir` in `mindleaf.json` (default: the project directory). There's
 also a "show in Finder" button (Explorer on Windows) next to the preview.
 
-![An exported map; the small dots mean the node has links](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/example-export.png)
+![An exported map; the small gray dots mean the node has links](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/example-export.png)
+
+Those little gray dots on the right edge are the link markers: **one dot per link, at most three drawn**.
+So two dots means the node carries two links. (Dots on the left are different: blue means there's an
+annotation. Notes get no marker — hover to read them.)
 
 ## 8. Ten templates that are actually useful
 
