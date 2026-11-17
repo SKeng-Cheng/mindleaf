@@ -659,14 +659,14 @@ function edgeInspectorHtml(edge) {
       </section>
       <section class="field">
         <label class="lab" for="edge-note">备注</label>
-        <textarea class="input textarea" id="edge-note" rows="3" placeholder="给自己看的补充说明…">${esc(edge.note ?? '')}</textarea>
+        <textarea class="input textarea" id="edge-note" rows="3"${heightStyle('edge-note')} placeholder="给自己看的补充说明…">${esc(edge.note ?? '')}</textarea>
       </section>
       <section class="field">
         <div class="annotation-head">
           <span class="lab">批注 <span class="lab-tag">给 AI 看</span></span>
           ${edge.annotation ? '<button type="button" class="btn ghost xs" data-act="edge-annotation-clear">清空</button>' : ''}
         </div>
-        <textarea class="input textarea annotation-input${edge.annotation ? ' has-value' : ''}" id="edge-annotation" rows="3" maxlength="4000" placeholder="想让 AI 对这条关联做什么？例如：这条依赖关系已经不成立了，删掉">${esc(edge.annotation ?? '')}</textarea>
+        <textarea class="input textarea annotation-input${edge.annotation ? ' has-value' : ''}" id="edge-annotation" rows="3"${heightStyle('edge-annotation')} maxlength="4000" placeholder="想让 AI 对这条关联做什么？例如：这条依赖关系已经不成立了，删掉">${esc(edge.annotation ?? '')}</textarea>
         <p class="hint annotation-hint">AI 读取导图时会先看到关联线上的批注，改完会清空。带批注的关联线是蓝色虚线。</p>
       </section>
       <section class="field">
@@ -770,14 +770,14 @@ function nodeInspectorHtml(node) {
       </section>
       <section class="field">
         <label class="lab" for="insp-note">备注</label>
-        <textarea class="input textarea" id="insp-note" rows="3" placeholder="补充说明、待办、出处…">${esc(node.note ?? '')}</textarea>
+        <textarea class="input textarea" id="insp-note" rows="3"${heightStyle('insp-note')} placeholder="补充说明、待办、出处…">${esc(node.note ?? '')}</textarea>
       </section>
       <section class="field">
         <div class="annotation-head">
           <span class="lab">批注 <span class="lab-tag">给 AI 看</span></span>
           ${node.annotation ? '<button type="button" class="btn ghost xs" data-act="annotation-clear" title="清空这条批注">清空</button>' : ''}
         </div>
-        <textarea class="input textarea annotation-input${node.annotation ? ' has-value' : ''}" id="insp-annotation" rows="3" maxlength="4000"
+        <textarea class="input textarea annotation-input${node.annotation ? ' has-value' : ''}" id="insp-annotation" rows="3"${heightStyle('insp-annotation')} maxlength="4000"
           placeholder="想让 AI 在这里改什么？例如：把这三个子节点合并成两个，名字更短一点">${esc(node.annotation ?? '')}</textarea>
         <p class="hint annotation-hint">AI 读取导图时会先看到批注，按批注改完后会清空并记一条 journal。画布上带蓝色小点的节点有批注。</p>
       </section>
@@ -2088,6 +2088,54 @@ function saveNoteNow(value) {
 }
 
 const STYLE_LABELS = { color: '模块颜色', textColor: '字体颜色', lineColor: '连线颜色' };
+
+/**
+ * 记住被手动拖过的输入框高度：右侧面板会随选中节点整块重绘，
+ * 不记一下的话，每次切节点就又回到默认高度了。
+ */
+const FIELD_HEIGHTS_KEY = 'mindleaf:field-heights';
+
+function readFieldHeights() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FIELD_HEIGHTS_KEY) ?? '{}');
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function fieldHeight(id) {
+  const value = Number(readFieldHeights()[id]);
+  return Number.isFinite(value) && value >= 40 ? Math.round(value) : 0;
+}
+
+/** 渲染时把这个高度写回 style，重绘后不会跳回去。 */
+function heightStyle(id) {
+  const height = fieldHeight(id);
+  return height ? ` style="height:${height}px"` : '';
+}
+
+/** 用户拖动 textarea 右下角后记下来（pointerup 时量一次）。 */
+function captureFieldHeights() {
+  const boxes = $$('#inspector textarea[id]');
+  if (!boxes.length) return;
+  const stored = readFieldHeights();
+  let changed = false;
+  for (const box of boxes) {
+    const height = Math.round(box.getBoundingClientRect().height);
+    if (height < 40) continue;
+    if (Math.abs((stored[box.id] ?? 0) - height) > 2) {
+      stored[box.id] = height;
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  try {
+    localStorage.setItem(FIELD_HEIGHTS_KEY, JSON.stringify(stored));
+  } catch {
+    /* 隐私模式写不了，忽略 */
+  }
+}
 
 const EDGE_LABELS = { label: '关联线说明', note: '关联线备注', annotation: '关联线批注' };
 let edgeTimer = null;
@@ -3540,6 +3588,10 @@ async function init() {
   window.addEventListener('resize', () => {
     applyPanelWidths();
   });
+
+  // 右侧输入框被拖动改过高度后记下来（下次重绘/切节点沿用）
+  window.addEventListener('pointerup', captureFieldHeights);
+  window.addEventListener('mouseup', captureFieldHeights);
 
   window.addEventListener('hashchange', () => {
     const fromHash = mapFromLocation();

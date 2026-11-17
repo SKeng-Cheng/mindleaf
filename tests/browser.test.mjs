@@ -615,6 +615,56 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：手动拖过的备注/批注框高度不会因为切换节点被重置', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  const result = await browser.evaluate(`(async () => {
+    const groups = [...document.querySelectorAll('#canvas-stage g[data-node-id]')];
+    const click = async (group, offsetX) => {
+      const rect = group.querySelector('rect').getBoundingClientRect();
+      const opts = { bubbles: true, clientX: rect.x + (offsetX ?? 10), clientY: rect.y + rect.height / 2, button: 0, pointerId: 1 };
+      group.dispatchEvent(new PointerEvent('pointerdown', opts));
+      group.dispatchEvent(new PointerEvent('pointerup', opts));
+      group.dispatchEvent(new MouseEvent('click', opts));
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    };
+
+    await click(groups[1]);
+    const defaultHeight = document.querySelector('#insp-note').getBoundingClientRect().height;
+
+    // 模拟用户拖大两个输入框
+    document.querySelector('#insp-note').style.height = '190px';
+    document.querySelector('#insp-annotation').style.height = '150px';
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // 切到别的节点，再切回来
+    await click(groups[3]);
+    const otherNode = {
+      note: document.querySelector('#insp-note').getBoundingClientRect().height,
+      annotation: document.querySelector('#insp-annotation').getBoundingClientRect().height,
+    };
+    await click(groups[1]);
+    const back = {
+      note: document.querySelector('#insp-note').getBoundingClientRect().height,
+      annotation: document.querySelector('#insp-annotation').getBoundingClientRect().height,
+    };
+    return { defaultHeight, otherNode, back, stored: localStorage.getItem('mindleaf:field-heights') };
+  })()`);
+  assert.ok(result.defaultHeight < 150, `默认高度应该较小，实际 ${result.defaultHeight}`);
+  assert.equal(Math.round(result.otherNode.note), 190, '换节点后备注框仍是我拖过的高度');
+  assert.equal(Math.round(result.otherNode.annotation), 150, '换节点后批注框仍是我拖过的高度');
+  assert.equal(Math.round(result.back.note), 190, '切回来也不变');
+  assert.match(result.stored ?? '', /insp-note/, '高度应被记住');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：关联线可以点选、改说明/颜色/备注/批注', { skip, timeout: 120000 }, async (t) => {
   const { session, slug } = await bootProject();
   const doc = session.store.read(slug).doc;
