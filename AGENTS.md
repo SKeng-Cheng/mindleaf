@@ -1,7 +1,7 @@
 # AGENTS.md
 
 给在这里工作的 AI agent（DSH / Codex / Claude Code / 其它）的说明书。
-人类请读 [README.md](README.md)。
+人类请读 [README.md](README.md)（简介）和 [MANUAL.md](MANUAL.md)（完整说明书）。
 
 ## 这个项目是什么
 

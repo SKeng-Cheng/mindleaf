@@ -33,6 +33,7 @@ const KEEP = [
   'mindleaf.json',
   'LICENSE',
   'README.md',
+  'MANUAL.md',
   '.gitignore',
   '启动 Mindleaf.command',
 ];
@@ -72,9 +73,9 @@ function buildReadme(source, baseSha) {
 
   const banner = [
     '',
-    '> **这是 lite 分支**：实现功能的最小包，44 个文件、解压后 437 KB（zip 146 KB），',
+    '> **这是 lite 分支**：实现功能的最小包，45 个文件、解压后 481 KB（zip 159 KB），',
     '> 只保留跑起来需要的代码和模板，没有测试、截图和开发文档。',
-    '> 完整版在 `main` 分支：67 个文件、解压后 2.6 MB。',
+    '> 完整版在 `main` 分支：70 个文件、解压后 3.8 MB。',
     `> 本分支由 \`scripts/build-lite.mjs\` 从 main@${baseSha.slice(0, 7)} 自动生成，**不要直接改它**。`,
     '',
   ].join('\n');
@@ -82,6 +83,19 @@ function buildReadme(source, baseSha) {
   // 插在第一个标题（# Mindleaf）之后
   const index = text.indexOf('\n');
   return `${text.slice(0, index)}\n${banner}${text.slice(index + 1)}`;
+}
+
+/** MANUAL 在 lite 里同样去掉截图引用（lite 不带 docs/images）。 */
+function buildManual(source, baseSha) {
+  const lines = source.split('\n');
+  const kept = [];
+  for (const line of lines) {
+    if (line.includes('docs/images/')) continue;
+    if (/^<p align="center">\s*$/.test(line)) continue;
+    if (/^<\/p>\s*$/.test(line)) continue;
+    kept.push(line);
+  }
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 /** lite 的 package.json：只留这次真的带上的 files，去掉跑不了的测试脚本。 */
@@ -129,12 +143,13 @@ function main() {
   const tarFile = path.join(metaDir, 'tree.tar');
   try {
     // 1. 把白名单里的文件从 HEAD 导出来
-    const archiveFiles = files.filter((file) => file !== 'README.md');
+    const archiveFiles = files.filter((file) => !['README.md', 'MANUAL.md'].includes(file));
     git(['archive', baseSha, '--prefix=', '-o', tarFile, ...archiveFiles]);
     execFileSync('tar', ['-x', '-f', tarFile, '-C', workTree], { stdio: 'pipe' });
 
-    // 2. README 与 package.json 重新生成
+    // 2. README / MANUAL 与 package.json 重新生成
     fs.writeFileSync(path.join(workTree, 'README.md'), buildReadme(fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8'), baseSha));
+    fs.writeFileSync(path.join(workTree, 'MANUAL.md'), buildManual(fs.readFileSync(path.join(ROOT, 'MANUAL.md'), 'utf8'), baseSha));
     fs.writeFileSync(
       path.join(workTree, 'package.json'),
       buildPackageJson(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'), [...files, 'package.json']),
