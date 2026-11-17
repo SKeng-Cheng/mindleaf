@@ -708,7 +708,7 @@ function nodeInspectorHtml(node) {
         </div>
         <textarea class="input textarea annotation-input${node.annotation ? ' has-value' : ''}" id="insp-annotation" rows="3" maxlength="4000"
           placeholder="想让 AI 在这里改什么？例如：把这三个子节点合并成两个，名字更短一点">${esc(node.annotation ?? '')}</textarea>
-        <p class="hint annotation-hint">AI 读取导图时会先看到批注，按批注改完后会清空并记一条 journal。画布上带橙色小点的节点有批注。</p>
+        <p class="hint annotation-hint">AI 读取导图时会先看到批注，按批注改完后会清空并记一条 journal。画布上带蓝色小点的节点有批注。</p>
       </section>
       <section class="field">
         <div class="color-head">

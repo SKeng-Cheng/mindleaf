@@ -206,11 +206,13 @@ export function layoutToVectorPdf(layout, options = {}) {
     if (colors.stroked) ops.push(`${n(Math.max(0.6, scale))} w`, `${colorOps(hexToRgb(colors.stroke))} RG`);
     ops.push(...roundedRectOps(x, boxY, w, h, radius), colors.stroked ? 'B' : 'f');
     const fontSize = pxs(node.fontSize);
-    const lineHeight = pxs(node.lineHeight ?? node.fontSize * 1.45);
-    const blockHeight = node.lines.length * lineHeight;
-    const firstBaseline = node.y + (node.height - blockHeight) / 2 + node.fontSize * 0.36 + (node.lineHeight - node.fontSize) / 2;
+    const lineHeight = node.lineHeight ?? node.fontSize * 1.45;
+    // 和 SVG 共用布局算好的第一行基线，保证网页、PNG、PDF 三处文字位置一致
+    const firstBaseline =
+      node.firstBaseline ??
+      node.y + (node.height - node.lines.length * lineHeight) / 2 + node.fontSize * 1.078;
     node.lines.forEach((line, index) => {
-      textOp(line, node.x + node.width / 2, firstBaseline + index * (node.lineHeight ?? node.fontSize * 1.45), fontSize, ink, node.depth <= 1);
+      textOp(line, node.x + node.width / 2, firstBaseline + index * lineHeight, fontSize, ink, node.depth <= 1);
     });
   }
 

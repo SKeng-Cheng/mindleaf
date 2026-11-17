@@ -174,6 +174,32 @@ test('layoutDoc 把连线色传给边，并且子节点继承父节点', () => {
   assert.equal(node(child.id).lineColor, '#0ea5e9');
 });
 
+test('节点文字按字体度量垂直居中（不是靠经验值估）', () => {
+  const doc = createDoc({ title: '居中', rootText: '根节点' });
+  const single = addNode(doc, { parent: 'root', text: '单行' });
+  const multi = addNode(doc, { parent: 'root', text: '这一行很长很长，会被折成好几行，用来验证多行文字也居中' });
+  updateNode(doc, { id: multi.id, boxWidth: 160 });
+
+  const layout = layoutDoc(doc);
+  const pick = (id) => layout.nodes.find((node) => node.id === id);
+  for (const node of [layout.nodes[0], pick(single.id), pick(multi.id)]) {
+    // 第一行基线 = 文字块顶部 + (行高 - (ascent+descent))*字号/2 + ascent*字号
+    const blockHeight = node.lines.length * node.lineHeight;
+    const blockTop = node.y + (node.height - blockHeight) / 2;
+    const expected = blockTop + (node.lineHeight - (0.941 + 0.235) * node.fontSize) / 2 + 0.941 * node.fontSize;
+    close(node.firstBaseline, expected, 0.01);
+
+    // 单行时：文字墨迹中心应和框中心重合（误差 < 1px）
+    if (node.lines.length === 1) {
+      const inkCenter = node.firstBaseline - ((0.941 - 0.235) / 2) * node.fontSize;
+      close(inkCenter, node.y + node.height / 2, 0.6);
+      // 旧的错误位置（0.42 经验值）应该明显偏上
+      const oldBaseline = node.y + (node.height - blockHeight) / 2 + node.fontSize * 0.42 + (node.lineHeight - node.fontSize) / 2;
+      assert.ok(node.firstBaseline > oldBaseline + 1, `新基线（${node.firstBaseline}）应比旧的（${oldBaseline}）更靠下`);
+    }
+  }
+});
+
 test('layoutDoc 尊重节点字号、字体和框宽高', () => {
   const doc = createDoc({ title: '排版', rootText: '根' });
   const node = addNode(doc, { parent: 'root', text: '一段比较长的节点文字用来测试换行行为' });
@@ -331,28 +357,30 @@ test('renderSvg 使用自定义的模块/字体/连线颜色', () => {
   void child;
 });
 
-test('有批注的节点在布局里打标记，SVG 里画一个橙色小点', () => {
+test('只有批注节点带蓝点标记，备注不画点', () => {
   const doc = createDoc({ title: '批注', rootText: '根' });
   const plain = addNode(doc, { parent: 'root', text: '普通节点' });
   const annotated = addNode(doc, { parent: 'root', text: '要改的节点' });
+  const noted = addNode(doc, { parent: 'root', text: '只有备注' });
   updateNode(doc, { id: annotated.id, annotation: '拆成两个' });
+  updateNode(doc, { id: noted.id, note: '这条只是备注' });
 
   const layout = layoutDoc(doc);
   const byId = (id) => layout.nodes.find((item) => item.id === id);
   assert.equal(byId(annotated.id).hasAnnotation, true);
   assert.equal(byId(plain.id).hasAnnotation, false);
+  assert.equal(byId(noted.id).hasAnnotation, false, '只有备注不算批注');
+  assert.equal(byId(noted.id).hasNote, true);
 
   const svg = docToSvg(doc);
-  assert.equal((svg.match(/data-annotation="1"/g) ?? []).length, 1, '有批注的节点应各有一个标记');
-  // 标记在节点内部左上角
-  const mark = /<circle data-annotation="1" cx="([\d.]+)" cy="([\d.]+)"/.exec(svg);
-  const nodeX = Number(/<g data-node-id="[^"]+"[^>]*>\s*<rect x="([\d.]+)"/.exec(svg)?.[1] ?? 0);
-  assert.ok(mark, '应能取到标记坐标');
+  assert.equal((svg.match(/data-annotation="1"/g) ?? []).length, 1, '只有批注节点有一个标记');
+  // 蓝点（不是原来的橙色）
+  assert.match(svg, /<circle data-annotation="1"[^>]*fill="#2563eb"/, '批注标记应为蓝色');
+  assert.ok(/<circle data-annotation="1" cx="[\d.]+" cy="[\d.]+"/.test(svg), '应能取到标记坐标');
   // 清空后不再画
   updateNode(doc, { id: annotated.id, annotation: '' });
   const clean = docToSvg(doc);
   assert.equal((clean.match(/data-annotation="1"/g) ?? []).length, 0, '清空批注后不应再有标记');
-  void nodeX;
 });
 
 test('renderSvg 每个节点用自己的字体和字号', () => {

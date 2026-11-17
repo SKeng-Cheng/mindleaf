@@ -180,8 +180,8 @@ Halfway through reviewing a map you think "this should be two nodes instead of t
 switch to the chat and explain which node you meant. Now you write it on the node:
 
 select the node → the "批注" (annotation) box sits under the note in the right panel → type what you
-want the AI to do. Annotated nodes get a small orange dot on the canvas and a ⚑ in the outline, so you
-can see at a glance what's still open.
+want the AI to do. Annotated nodes get a small **blue** dot on the canvas and a ⚑ in the outline, so you
+can see at a glance what's still open. Once the agent clears the annotation, the dot goes away.
 
 On the agent side:
 

@@ -684,11 +684,13 @@ test('浏览器：节点批注 —— 写在备注和颜色之间，落盘并显
   // 画布上出现标记
   const marked = await browser.evaluate(`({
     marks: document.querySelectorAll('#canvas-stage [data-annotation="1"]').length,
+    markFill: document.querySelector('#canvas-stage [data-annotation="1"]')?.getAttribute('fill'),
     filled: document.querySelector('#insp-annotation').classList.contains('has-value'),
     value: document.querySelector('#insp-annotation').value,
     hasClear: !!document.querySelector('[data-act="annotation-clear"]'),
   })`);
   assert.equal(marked.marks, 1, '画布上该节点应有批注标记');
+  assert.equal(marked.markFill, '#2563eb', '批注标记应为蓝色小点');
   assert.equal(marked.value, '把这三个子节点合并成两个，名字再短一点', '重选节点后批注应回显');
   assert.equal(marked.filled, true, '有批注时输入框应有高亮状态');
   assert.equal(marked.hasClear, true, '有批注时应出现「清空」按钮');

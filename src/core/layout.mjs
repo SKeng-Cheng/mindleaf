@@ -11,6 +11,19 @@
 
 import { BOX_HEIGHT_MAX, BOX_HEIGHT_MIN, BOX_WIDTH_MAX, BOX_WIDTH_MIN, FONTS, FONT_SIZE_MAX, FONT_SIZE_MIN } from './doc.mjs';
 
+/**
+ * 字体度量（单位 em，取 Chromium 实测的 system/serif/mono 三套字体栈：
+ * ascent 0.941、descent 0.235）。用来把文字块真正垂直居中，
+ * 而不是"拍一个 0.42 的经验值"——那样字会明显偏上。
+ */
+export const FONT_ASCENT = 0.941;
+export const FONT_DESCENT = 0.235;
+
+/** 一行文字里，从行顶到基线的距离（em 为单位）。 */
+export function baselineOffsetEm(lineHeightEm = 1.45) {
+  return (lineHeightEm - (FONT_ASCENT + FONT_DESCENT)) / 2 + FONT_ASCENT;
+}
+
 const FONT_FAMILY =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
 
@@ -47,6 +60,7 @@ export const THEMES = {
     nodeInk: '#283341',
     nodeStroke: '#d8e0ea',
     relation: '#f59e0b',
+    annotation: '#2563eb',
     danger: '#dc2626',
   },
   dark: {
@@ -64,6 +78,7 @@ export const THEMES = {
     nodeInk: '#dbe4ef',
     nodeStroke: '#2b3f5e',
     relation: '#fbbf24',
+    annotation: '#60a5fa',
     danger: '#f87171',
   },
 };
@@ -261,6 +276,7 @@ export function layoutDoc(doc, options = {}) {
       lineColor: lineColorOf.get(node.id) ?? null,
       links: node.links ?? [],
       hasAnnotation: Boolean(node.annotation),
+      hasNote: Boolean(node.note),
       collapsed: isCollapsed(node),
       expandable: (children.get(node.id) ?? []).length > 0,
       parentId: node.parent,
@@ -343,6 +359,10 @@ export function layoutDoc(doc, options = {}) {
     node.paddingX = D.paddingX * scale;
     node.paddingY = D.paddingY * scale;
     node.radius = D.cornerRadius * scale;
+    // 文字块整体居中：先算文字块高度，再按字体 ascent/descent 定第一行基线
+    const blockHeight = node.lines.length * node.lineHeight;
+    const blockTop = node.y + (node.height - blockHeight) / 2;
+    node.firstBaseline = blockTop + baselineOffsetEm(D.lineHeight) * node.fontSize;
   }
   for (const edge of edges) {
     edge.from = { x: (edge.from.x - minX + padding) * scale, y: (edge.from.y - minY + padding) * scale };

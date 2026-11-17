@@ -97,7 +97,8 @@ $MM annotations                    # 看有没有人类留的批注要处理
 - `nodes` 是扁平数组 + `parent` 指针，**只有一个根**（`parent: null`）。
 - `order` 决定同级顺序；插入后不用手排，op 会重排。
 - `links[].kind`：`file`（工作区文件，相对路径以项目根的 `workspaceDir` 为准）、`url`、`code`（可带 `#L10-L20` 行号）。
-- `annotation` 是人类写给 agent 的修改要求；处理完要清空。`note` 是人给自己看的备注。
+- `annotation` 是人类写给 agent 的修改要求（画布上蓝色小点、大纲里 ⚑），处理完要清空，
+  清空后标记自动消失。`note` 是人给自己看的备注，画布上不显示标记。
 
 - `edges` 是跨分支的关联线（虚线箭头），不参与树结构。
 - 读到不合法的文件也不要慌：`normalizeDoc` 会自动修复孤儿、环、重复 id、多根。

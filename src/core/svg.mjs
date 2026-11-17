@@ -93,8 +93,8 @@ export function renderSvg(layout, options = {}) {
       `<rect x="${num(node.x)}" y="${num(node.y)}" width="${num(node.width)}" height="${num(node.height)}" rx="${num(node.radius)}" ry="${num(node.radius)}" fill="${fill}" stroke="${stroke}" stroke-width="${num(Math.max(1, layout.scale))}"/>`,
     );
     const lineHeight = node.lineHeight ?? node.fontSize * LAYOUT_DEFAULTS.lineHeight;
-    const textBlock = node.lines.length * lineHeight;
-    const firstBaseline = node.y + (node.height - textBlock) / 2 + node.fontSize * 0.42 + (lineHeight - node.fontSize) / 2;
+    const firstBaseline =
+      node.firstBaseline ?? node.y + (node.height - node.fontSize * LAYOUT_DEFAULTS.lineHeight) / 2 + node.fontSize;
     const family = node.fontFamily ?? layout.fontFamily;
     node.lines.forEach((line, index) => {
       const y = firstBaseline + index * lineHeight;
@@ -103,18 +103,18 @@ export function renderSvg(layout, options = {}) {
       );
     });
     if (node.hasAnnotation) {
-      // 批注标记：左上角一个橙色小圆点，白描边，导出的图里也有
+      // 批注标记：左上角一个蓝色小圆点，白描边，导出的图里也有（清空批注后自动消失）
       const cx = node.x + 7 * layout.scale;
       const cy = node.y + 7 * layout.scale;
       out.push(
-        `<circle data-annotation="1" cx="${num(cx)}" cy="${num(cy)}" r="${num(4.2 * layout.scale)}" fill="${palette.relation}" stroke="${palette.canvas}" stroke-width="${num(1.6 * layout.scale)}"/>`,
+        `<circle data-annotation="1" cx="${num(cx)}" cy="${num(cy)}" r="${num(4.2 * layout.scale)}" fill="${palette.annotation}" stroke="${palette.canvas}" stroke-width="${num(1.6 * layout.scale)}"/>`,
       );
     }
     if (linkBadges && node.links.length) {
       const dotY = node.y + node.height / 2;
       node.links.slice(0, 3).forEach((link, index) => {
         out.push(
-          `<circle cx="${num(node.x + node.width - (index * 8 + 6) * layout.scale)}" cy="${num(dotY)}" r="${num(2.6 * layout.scale)}" fill="${palette.relation}" opacity="0.95"/>`,
+          `<circle cx="${num(node.x + node.width - (index * 8 + 6) * layout.scale)}" cy="${num(dotY)}" r="${num(2.6 * layout.scale)}" fill="${palette.muted}" opacity="0.55"/>`,
         );
       });
     }
