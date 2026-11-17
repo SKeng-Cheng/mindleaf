@@ -24,7 +24,8 @@
     "AGENTS.md",
     "CLAUDE.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "start": "node bin/mindleaf.mjs serve",
