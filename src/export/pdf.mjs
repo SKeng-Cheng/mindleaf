@@ -9,7 +9,7 @@
  *
  * 坐标：内部一律用"左上原点"的布局坐标，写出时翻成 PDF 的左下原点。
  */
-import { treeGeometry, relationGeometry } from '../core/layout.mjs';
+import { treeGeometry, relationGeometry, relationLabelPoint } from '../core/layout.mjs';
 
 const PT_PER_PX = 0.75; // CSS px(96dpi) -> pt(72dpi)
 
@@ -191,8 +191,19 @@ export function layoutToVectorPdf(layout, options = {}) {
       'f',
     );
     if (edge.label) {
-      const labelTop = Math.min(p0.y, p2.y) - Math.abs(Math.min(p0.y, p2.y) - cp.y) * 0.62;
-      textOp(edge.label, (p0.x + p2.x) / 2, labelTop, 10.5 * scale, relColor, true);
+      // 和 SVG 一致：标签压在线上的中点，先用底色盖住曲线再写字
+      const point = relationLabelPoint(edge);
+      const fontSize = 10.5 * scale;
+      const w = Math.max(fontSize * 2, estimateWidth(edge.label, fontSize) * 0.98 + 9 * scale);
+      const h = fontSize * 1.66;
+      ops.push(
+        `${colorOps(hexToRgb(palette.canvas))} rg`,
+        `${colorOps(relColor)} RG`,
+        `${n(Math.max(0.5, scale * 0.8))} w`,
+        ...roundedRectOps(pxs(point.x - w / 2), fy(point.y + h / 2), w, h, h / 2),
+        'B',
+      );
+      textOp(edge.label, point.x, point.y + fontSize * 0.36, fontSize, relColor, true);
     }
   }
 

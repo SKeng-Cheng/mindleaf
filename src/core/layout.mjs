@@ -401,12 +401,12 @@ export function relationPath(edge) {
   return `M ${r2(p0.x)} ${r2(p0.y)} Q ${r2(cp.x)} ${r2(cp.y)}, ${r2(p2.x)} ${r2(p2.y)}`;
 }
 
-/** 关联线标签位置。 */
+/** 关联线标签位置：二次贝塞尔 t=0.5 的那个点，也就是线本身的中点。 */
 export function relationLabelPoint(edge) {
   const { p0, cp, p2 } = relationGeometry(edge);
   return {
-    x: (p0.x + p2.x) / 2,
-    y: Math.min(p0.y, p2.y) - Math.abs(Math.min(p0.y, p2.y) - cp.y) * 0.62,
+    x: (p0.x + 2 * cp.x + p2.x) / 4,
+    y: (p0.y + 2 * cp.y + p2.y) / 4,
   };
 }
 

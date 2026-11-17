@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDoc } from '../src/core/doc.mjs';
 import { addEdge, addNode, updateNode } from '../src/core/ops.mjs';
-import { layoutDoc, textWidth, wrapText, treePath, relationPath, relationGeometry, THEMES } from '../src/core/layout.mjs';
+import { layoutDoc, textWidth, wrapText, treePath, relationPath, relationGeometry, relationLabelPoint, THEMES } from '../src/core/layout.mjs';
 import { renderSvg, docToSvg, esc } from '../src/core/svg.mjs';
 
 /** 近似相等（node:assert 没有 approximately） */
@@ -208,6 +208,45 @@ test('layoutDoc 关联线出现在 edges 里', () => {
   assert.match(relationPath(relation), /^M .* Q /);
   const geometry = relationGeometry(relation);
   assert.ok(geometry.cp.y <= Math.min(geometry.p0.y, geometry.p2.y), '关联线应向上拱起');
+});
+
+test('关联线标签压在曲线的中点上（t=0.5），而不是飘在线的上方', () => {
+  const doc = sampleDoc();
+  const a = doc.nodes[1];
+  const b = doc.nodes[3];
+  addEdge(doc, { from: a.id, to: b.id, label: '影响' });
+  const relation = layoutDoc(doc).edges.find((edge) => edge.kind === 'relation');
+  const { p0, cp, p2 } = relationGeometry(relation);
+  const point = relationLabelPoint(relation);
+
+  // 二次贝塞尔 t=0.5 的解析解
+  const onCurve = { x: (p0.x + 2 * cp.x + p2.x) / 4, y: (p0.y + 2 * cp.y + p2.y) / 4 };
+  close(point.x, onCurve.x, 0.01);
+  close(point.y, onCurve.y, 0.01);
+
+  // 反例：以前那种"在线上面"的位置，y 明显更小（更高）
+  const floatingY = Math.min(p0.y, p2.y) - Math.abs(Math.min(p0.y, p2.y) - cp.y) * 0.62;
+  assert.ok(point.y > floatingY + 1, `标签应压在线上（${point.y}）而不是浮在上方（${floatingY}）`);
+});
+
+test('SVG 里关联线标签的底框中心就在线上，且盖住曲线', () => {
+  const doc = sampleDoc();
+  const a = doc.nodes[1];
+  const b = doc.nodes[3];
+  addEdge(doc, { from: a.id, to: b.id, label: '影响' });
+  const layout = layoutDoc(doc);
+  const relation = layout.edges.find((edge) => edge.kind === 'relation');
+  const point = relationLabelPoint(relation);
+  const svg = docToSvg(doc);
+
+  // 找到标签底框：rx 半圆 + relation 色描边，紧跟着标签文字
+  const match = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" rx="(?:[\d.]+)" fill="[^"]+" stroke="[^"]+" stroke-width="(?:[\d.]+)"\/><text x="(?:[\d.]+)" y="(?:[\d.]+)"[^>]*>影响<\/text>/.exec(svg);
+  assert.ok(match, '应能找到关联线标签的底框');
+  const [x, y, w, h] = match.slice(1).map(Number);
+  close(x + w / 2, point.x, 1);
+  close(y + h / 2, point.y, 1);
+  // 底框必须是实心（没有 opacity 半透明），否则盖不住曲线
+  assert.ok(!/rx="(?:[\d.]+)" fill="[^"]+" stroke="[^"]+" stroke-width="(?:[\d.]+)" opacity=/.test(svg), '标签底框不应是半透明');
 });
 
 test('treePath 输出三次贝塞尔', () => {
