@@ -615,6 +615,52 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：带图标的按钮，图标和文字都垂直居中', { skip, timeout: 90000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  const boxes = await browser.evaluate(`(() => {
+    const measure = (selector) => {
+      const button = document.querySelector(selector);
+      if (!button) return null;
+      const rect = button.getBoundingClientRect();
+      const icon = button.querySelector('svg');
+      const iconRect = icon?.getBoundingClientRect();
+      // 文字可能是裸文本节点（如「新建导图」），也可能包在 span 里（如「导出」）
+      const textNode = [...button.childNodes].find((node) => node.nodeType === 3 && node.textContent.trim());
+      const textHost = textNode ?? [...button.children].find((node) => node.tagName === 'SPAN' && node.textContent.trim());
+      const range = document.createRange();
+      range.selectNodeContents(textNode ?? textHost);
+      const textRect = range.getBoundingClientRect();
+      return {
+        selector,
+        buttonCenter: rect.top + rect.height / 2,
+        iconHeight: iconRect ? Math.round(iconRect.height * 10) / 10 : null,
+        iconCenter: iconRect ? iconRect.top + iconRect.height / 2 : null,
+        textCenter: textRect.top + textRect.height / 2,
+        display: getComputedStyle(button).display,
+        direction: getComputedStyle(button).flexDirection,
+      };
+    };
+    return [measure('#btn-new-map'), measure('#btn-export')].filter(Boolean);
+  })()`);
+  assert.equal(boxes.length, 2, '应能量到两个带图标的按钮');
+  for (const box of boxes) {
+    // 作为 flex 子项时 inline-flex 会被 blockify 成 flex，两种都算正常
+    assert.ok(['flex', 'inline-flex'].includes(box.display), `${box.selector} 应该是 flex 容器，实际 ${box.display}`);
+    assert.equal(box.direction, 'row', `${box.selector} 不该变成纵向排列，实际 ${box.direction}`);
+    assert.ok(box.iconHeight >= 14.5, `${box.selector} 的图标不该被压扁：${box.iconHeight}px`);
+    assert.ok(Math.abs(box.iconCenter - box.buttonCenter) <= 1, `${box.selector} 图标应垂直居中（偏差 ${(box.iconCenter - box.buttonCenter).toFixed(1)}px）`);
+    assert.ok(Math.abs(box.textCenter - box.buttonCenter) <= 1, `${box.selector} 文字应垂直居中（偏差 ${(box.textCenter - box.buttonCenter).toFixed(1)}px）`);
+  }
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：手动拖过的备注/批注框高度不会因为切换节点被重置', { skip, timeout: 120000 }, async (t) => {
   const { session, slug } = await bootProject();
   const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
