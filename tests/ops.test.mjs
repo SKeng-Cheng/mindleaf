@@ -107,6 +107,40 @@ test('updateNode 的 subtree 模式把颜色套到整棵子树', () => {
   assert.throws(() => updateNode(doc, { id: a.id, subtree: true }), /至少要给一个颜色/);
 });
 
+test('新建节点默认沿用空间上前一个节点的颜色（不是父节点）', () => {
+  const doc = createDoc({ title: '继承颜色', rootText: '根' });
+  const first = addNode(doc, { parent: 'root', text: '第一个' });
+  updateNode(doc, { id: first.id, color: '#fecdd3' });
+
+  // 追加到最后一个位置 → 和前一个同级节点同色
+  const second = addNode(doc, { parent: 'root', text: '第二个' });
+  assert.equal(second.color, '#fecdd3');
+  // 再追加 → 仍和前一个（第二个）一致，颜色会一路延续
+  const third = addNode(doc, { parent: 'root', text: '第三个' });
+  assert.equal(third.color, '#fecdd3');
+
+  // 插到最前面：前面没有同级节点，此时"上一个"是父节点（根没设颜色 → 不继承）
+  const top = addNode(doc, { parent: 'root', text: '插到最前', position: 'start' });
+  assert.equal(top.color, undefined, '根节点没有颜色，最前面的节点不应凭空有颜色');
+
+  // 第一个子节点：上一个节点是父节点，跟父节点同色
+  const child1 = addNode(doc, { parent: first.id, text: '子一' });
+  assert.equal(child1.color, '#fecdd3', '父节点有颜色时，第一个子节点跟父节点一致');
+  // 第二个子节点：上一个节点是兄弟节点
+  const child2 = addNode(doc, { parent: first.id, text: '子二' });
+  assert.equal(child2.color, '#fecdd3');
+
+  // 显式给的 color 优先
+  const explicit = addNode(doc, { parent: 'root', text: '指定色', color: '#bfdbfe' });
+  assert.equal(explicit.color, '#bfdbfe');
+
+  // 前一个节点没颜色时也不乱给颜色
+  const plain = addNode(doc, { parent: 'root', text: '无色的前一个' });
+  const afterPlain = addNode(doc, { parent: 'root', text: '跟在后头' });
+  assert.equal(plain.color, '#bfdbfe', '延续显式色');
+  assert.equal(afterPlain.color, '#bfdbfe');
+});
+
 test('updateNode 支持批注，传空串可以清掉', () => {
   const { doc, a } = base();
   updateNode(doc, { id: a.id, annotation: '改成两个节点' });

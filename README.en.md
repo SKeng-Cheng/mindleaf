@@ -132,6 +132,10 @@ Font size, font and box size live in the same block:
 | Font | System default, Hei, Song, Kai, Mono, Western serif — all system fonts, nothing downloaded |
 | Box width / height | Empty means auto; a width fixes the wrap width, a height is a minimum (the box grows if the text needs it) |
 
+New nodes inherit the colour of the node **spatially before** them: `Enter` (sibling) copies the current
+node, `Tab` as the first child copies the parent, and with several siblings it copies the one just before
+it — not "everything takes the parent's colour", since a level can hold several colours.
+
 The "本节点 / 含子节点" switch at the top right of the colour block sets the scope:
 
 - **本节点 (this node)**: only the selected node

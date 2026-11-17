@@ -57,7 +57,11 @@ export function addNode(doc, patch = {}) {
     collapsed: false,
     links: normalizeLinkPatch(patch.links),
   };
+  // 新节点默认沿用「空间上的上一个节点」的颜色：插到第 i 个位置时是前一个同级节点，
+  // 插到最前面（第一个子节点）时就是父节点。注意不是"跟父节点同色"。
+  const previous = index > 0 ? siblings[index - 1] : parent;
   if (patch.color) node.color = patch.color;
+  else if (previous?.color) node.color = previous.color;
   doc.nodes.push(node);
   siblings.splice(index, 0, node);
   siblings.forEach((sibling, i) => {

@@ -615,6 +615,42 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：新建节点沿用上一个节点的颜色', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  // 先给一个一级节点上色
+  const doc = session.store.read(slug).doc;
+  const colored = doc.nodes.find((node) => node.depth !== 0 && node.parent === 'root');
+  session.store.applyOps(slug, [{ op: 'updateNode', id: colored.id, color: '#fecdd3' }], { by: 'user' });
+
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  // 选中该节点 → Enter 加同级节点
+  const created = await browser.evaluate(`(async () => {
+    const group = document.querySelector('#canvas-stage g[data-node-id][data-node-id="${colored.id}"]');
+    const rect = group.querySelector('rect').getBoundingClientRect();
+    const opts = { bubbles: true, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2, button: 0, pointerId: 1 };
+    group.dispatchEvent(new PointerEvent('pointerdown', opts));
+    group.dispatchEvent(new PointerEvent('pointerup', opts));
+    group.dispatchEvent(new MouseEvent('click', opts));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const selected = document.querySelector('#canvas-stage g[data-node-id].is-selected');
+    const fill = selected?.querySelector('rect')?.getAttribute('fill');
+    return { id: selected?.dataset.nodeId, fill };
+  })()`);
+  assert.ok(created.id && created.id !== colored.id, '应新建一个节点并选中');
+  const saved = session.store.read(slug).doc.nodes.find((node) => node.id === created.id);
+  assert.equal(saved.color, '#fecdd3', '新节点应沿用上一个节点的颜色');
+  assert.equal(created.fill, '#fecdd3', '画布上新节点也应该是这个颜色');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：节点批注 —— 写在备注和颜色之间，落盘并显示标记', { skip, timeout: 120000 }, async (t) => {
   const { session, slug } = await bootProject();
   const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
