@@ -1,6 +1,6 @@
 {
   "name": "mindleaf",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A local, file-first mind map that humans edit in the browser and AI agents edit over MCP. Zero dependencies.",
   "type": "module",
   "license": "MIT",

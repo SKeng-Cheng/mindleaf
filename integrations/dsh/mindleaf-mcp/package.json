@@ -1,6 +1,6 @@
 {
   "name": "@local/mindleaf-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Connects the local Mindleaf MCP server so the agent can read and edit mind maps.",
