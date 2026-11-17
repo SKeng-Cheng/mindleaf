@@ -1,0 +1,21 @@
+# 依赖（本项目零依赖，这里只是防止误提交）
+node_modules/
+
+# 项目配置：每台机器的导图目录 / workspaceDir 都不一样，第一次运行时自动生成
+/mindleaf.json
+
+# 本机导图数据：默认库目录。开源自己的仓库时请保留这一行，避免把个人论文内容发出去。
+# 想让导图跟随 git 管理，删掉下面一行即可（或改成 /maps/*.mindmap.json 并保留示例）。
+/maps/
+
+# 接入脚本渲染出来的中间产物（可随时重新生成）
+/integrations/.rendered/
+
+# 运行期临时目录（旧版本会写这里）
+/.mindleaf/
+
+# 导出物与临时文件
+/exports/
+/tmp/
+*.log
+.DS_Store

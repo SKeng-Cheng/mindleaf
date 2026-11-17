@@ -1,0 +1,18 @@
+# Mindleaf MCP 连接（DSH 配置型 bundle）
+#
+# 这个文件由 `node integrations/install.mjs --target dsh` 渲染成真实路径后使用；
+# 源码里的 NODE、TOOL、PROJECT 三处占位符会被替换成绝对路径。
+- insert:
+    - id: mindleaf-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: mindleaf
+        transport: stdio
+        command: '__NODE__'
+        args:
+          - '__TOOL__/bin/mindleaf.mjs'
+          - mcp
+          - --project
+          - '__PROJECT__'
+        cwd: '__PROJECT__'
+        failOnStartupError: true

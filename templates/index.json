@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "thesis-outline",
+      "title": "论文提纲",
+      "emoji": "🎓",
+      "description": "按绪论 / 方法 / 实验 / 结论四段式展开的论文骨架，开题、中期和正式写作都能用。",
+      "tags": [
+        "学术",
+        "论文"
+      ],
+      "file": "thesis-outline.md"
+    },
+    {
+      "id": "research-plan",
+      "title": "研究计划",
+      "emoji": "🧭",
+      "description": "围绕科学问题、技术路线、验证方式与时间节点组织一份可执行的研究计划。",
+      "tags": [
+        "学术",
+        "计划"
+      ],
+      "file": "research-plan.md"
+    },
+    {
+      "id": "literature-review",
+      "title": "文献综述",
+      "emoji": "📚",
+      "description": "按研究主题聚类文献，标注代表工作、贡献与局限，最后收敛到研究空白。",
+      "tags": [
+        "学术",
+        "综述"
+      ],
+      "file": "literature-review.md"
+    },
+    {
+      "id": "paper-reading",
+      "title": "论文精读笔记",
+      "emoji": "📄",
+      "description": "读一篇论文的标准结构：问题、方法、实验、结论、可借鉴点与疑问。",
+      "tags": [
+        "学术",
+        "精读"
+      ],
+      "file": "paper-reading.md"
+    },
+    {
+      "id": "experiment-design",
+      "title": "实验设计",
+      "emoji": "🧪",
+      "description": "数据集、指标、对照、消融、失败分析五件事一次性想清楚。",
+      "tags": [
+        "学术",
+        "实验"
+      ],
+      "file": "experiment-design.md"
+    },
+    {
+      "id": "project-roadmap",
+      "title": "项目路线图",
+      "emoji": "🗺️",
+      "description": "里程碑 + 交付物 + 风险，适合课题推进与多人协作。",
+      "tags": [
+        "项目",
+        "规划"
+      ],
+      "file": "project-roadmap.md"
+    },
+    {
+      "id": "meeting-notes",
+      "title": "会议纪要",
+      "emoji": "🗒️",
+      "description": "议题、结论、待办、负责人，开完会十分钟内能填完。",
+      "tags": [
+        "日常",
+        "协作"
+      ],
+      "file": "meeting-notes.md"
+    },
+    {
+      "id": "weekly-plan",
+      "title": "周计划",
+      "emoji": "📆",
+      "description": "把一周拆成目标 / 任务 / 阻塞，周末复盘用同一张图。",
+      "tags": [
+        "日常",
+        "时间管理"
+      ],
+      "file": "weekly-plan.md"
+    },
+    {
+      "id": "swot",
+      "title": "SWOT 分析",
+      "emoji": "🧩",
+      "description": "优势、劣势、机会、威胁四象限，适合选题论证或方案对比。",
+      "tags": [
+        "决策",
+        "分析"
+      ],
+      "file": "swot.md"
+    },
+    {
+      "id": "reading-list",
+      "title": "知识地图",
+      "emoji": "🌱",
+      "description": "按主题组织学习路径：必读、选读、待补，节点链接到本地笔记或网页。",
+      "tags": [
+        "学习",
+        "知识管理"
+      ],
+      "file": "reading-list.md"
+    }
+  ]
+}

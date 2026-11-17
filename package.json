@@ -1,0 +1,55 @@
+{
+  "name": "mindleaf",
+  "version": "0.1.0",
+  "description": "A local, file-first mind map that humans edit in the browser and AI agents edit over MCP. Zero dependencies.",
+  "type": "module",
+  "license": "MIT",
+  "author": "SKeng-Cheng",
+  "bin": {
+    "mindleaf": "bin/mindleaf.mjs",
+    "mm": "bin/mindleaf.mjs"
+  },
+  "exports": {
+    ".": "./src/core/index.mjs",
+    "./core": "./src/core/index.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "web",
+    "templates",
+    "examples",
+    "integrations/install.mjs",
+    "integrations/dsh",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/mindleaf.mjs serve",
+    "test": "node --test",
+    "test:e2e": "node --test tests/browser.test.mjs",
+    "mm": "node bin/mindleaf.mjs",
+    "lite": "node scripts/build-lite.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mindmap",
+    "mcp",
+    "markdown",
+    "markmap",
+    "mermaid",
+    "ai",
+    "llm",
+    "agent",
+    "zero-dependency"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SKeng-Cheng/mindleaf.git"
+  },
+  "homepage": "https://github.com/SKeng-Cheng/mindleaf#readme"
+}
