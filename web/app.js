@@ -38,6 +38,11 @@ const esc = (value) =>
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const clone = (value) => (typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value)));
 const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
+
+/** 左右两栏的默认宽度与可拖动范围（px）。 */
+const PANEL_DEFAULTS = { sidebar: 272, inspector: 332 };
+const PANEL_LIMITS = { sidebar: [220, 560], inspector: [260, 620] };
+const PANEL_ZOOMS = [0.9, 1, 1.12, 1.25];
 const truncate = (text, length = 24) => {
   const value = String(text ?? '').replace(/\s+/g, ' ');
   return value.length > length ? `${value.slice(0, length)}…` : value;
@@ -1664,6 +1669,10 @@ function fillSettings() {
   $('#set-png').textContent = boot?.engines?.png ? '可用' : '不可用';
   $('#set-pdf').textContent = boot?.engines?.pdf ? '可用' : '不可用';
   $('#set-version').textContent = boot ? `v${boot.version}` : '—';
+  const scale = readUiPref('ui-scale', 1);
+  $('#set-ui-scale').value = PANEL_ZOOMS.includes(Number(scale)) ? String(Number(scale)) : '1';
+  const widths = $('#set-panel-widths');
+  if (widths) widths.textContent = `左 ${panelWidth('sidebar')}px · 右 ${panelWidth('inspector')}px`;
   $('#settings-error').hidden = true;
 }
 
@@ -2458,6 +2467,7 @@ function bindEvents() {
     if (!isMobile()) {
       try {
         localStorage.setItem('mindleaf:sidebar', collapsed ? '1' : '0');
+        applyPanelWidths();
       } catch {
         /* 忽略 */
       }
@@ -2468,6 +2478,7 @@ function bindEvents() {
     if (!isMobile()) {
       try {
         localStorage.setItem('mindleaf:inspector', collapsed ? '1' : '0');
+        applyPanelWidths();
       } catch {
         /* 忽略 */
       }
@@ -2480,6 +2491,16 @@ function bindEvents() {
   $('#btn-undo').addEventListener('click', undo);
   $('#btn-redo').addEventListener('click', redo);
   $('#btn-theme').addEventListener('click', toggleTheme);
+  $('#set-ui-scale').addEventListener('change', (event) => {
+    applyPanelZoom(event.target.value);
+    toast('侧栏字号已更新');
+    if (state.doc) applyTransform();
+  });
+  $('#btn-reset-panels').addEventListener('click', () => {
+    resetPanelWidths();
+    toast('已恢复默认栏宽', { tone: 'ok' });
+    if (state.doc) applyTransform();
+  });
   $('#btn-settings').addEventListener('click', openSettingsDialog);
   $('#btn-settings-side').addEventListener('click', openSettingsDialog);
   $('#btn-export').addEventListener('click', (event) => {
@@ -2912,6 +2933,141 @@ function onGlobalKeydown(event) {
    启动
    ========================================================================== */
 
+/** 读一个本地 UI 偏好（读不到就用默认值）。 */
+function readUiPref(key, fallback) {
+  try {
+    const raw = localStorage.getItem(`mindleaf:${key}`);
+    return raw === null ? fallback : raw;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeUiPref(key, value) {
+  try {
+    localStorage.setItem(`mindleaf:${key}`, String(value));
+  } catch {
+    /* 隐私模式下写不了，忽略即可 */
+  }
+}
+
+/** 当前栏宽（px）；没设过就用默认值。 */
+function panelWidth(which) {
+  const raw = Number(readUiPref(`${which}-w`, PANEL_DEFAULTS[which]));
+  const [min, max] = PANEL_LIMITS[which];
+  return Number.isFinite(raw) ? clamp(Math.round(raw), min, max) : PANEL_DEFAULTS[which];
+}
+
+/** 把栏宽写到 --sidebar-w / --inspector-w 上（收起靠 --sidebar-show 乘 0，不受影响）。 */
+function applyPanelWidths() {
+  const app = $('#app');
+  app.style.setProperty('--sidebar-w', `${panelWidth('sidebar')}px`);
+  app.style.setProperty('--inspector-w', `${panelWidth('inspector')}px`);
+  const left = $('#resizer-left');
+  const right = $('#resizer-right');
+  const mobile = isMobile();
+  if (left) left.hidden = mobile || app.classList.contains('sidebar-collapsed');
+  if (right) right.hidden = mobile || app.classList.contains('inspector-collapsed');
+  const label = $('#set-panel-widths');
+  if (label) label.textContent = `左 ${panelWidth('sidebar')}px · 右 ${panelWidth('inspector')}px`;
+}
+
+/** 侧栏字号（0.9 / 1 / 1.12 / 1.25），只作用于左右两栏。 */
+function applyPanelZoom(scale) {
+  const value = PANEL_ZOOMS.includes(Number(scale)) ? Number(scale) : 1;
+  $('#app').style.setProperty('--panel-zoom', String(value));
+  const select = $('#set-ui-scale');
+  if (select) select.value = String(value);
+  writeUiPref('ui-scale', value);
+}
+
+function resetPanelWidths() {
+  writeUiPref('sidebar-w', PANEL_DEFAULTS.sidebar);
+  writeUiPref('inspector-w', PANEL_DEFAULTS.inspector);
+  applyPanelWidths();
+}
+
+/**
+ * 拖拽分隔条改栏宽。
+ * 左侧：分隔条在侧栏右边缘，向右拖变宽；右侧：在属性栏左边缘，向左拖变宽。
+ */
+function initResizers() {
+  const workspace = $('.workspace');
+  let drag = null;
+
+  const onMove = (event) => {
+    if (!drag) return;
+    const delta = (event.clientX - drag.startX) * drag.sign;
+    const [min, max] = PANEL_LIMITS[drag.which];
+    // 别把画布挤没：最多占到窗口宽度的 60%
+    const cap = Math.max(min, Math.round(window.innerWidth * 0.6));
+    const width = clamp(Math.round(drag.startWidth + delta), min, Math.min(max, cap));
+    drag.width = width;
+    $('#app').style.setProperty(drag.which === 'sidebar' ? '--sidebar-w' : '--inspector-w', `${width}px`);
+    drag.handle.setAttribute('aria-valuenow', String(width));
+  };
+
+  const onUp = () => {
+    if (!drag) return;
+    const { which, width, handle } = drag;
+    drag = null;
+    workspace.classList.remove('is-resizing');
+    handle.classList.remove('is-active');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    if (Number.isFinite(width)) writeUiPref(`${which}-w`, width);
+    applyPanelWidths();
+    if (state.doc) applyTransform();
+  };
+
+  const bind = (id, which, sign) => {
+    const handle = $(`#${id}`);
+    if (!handle) return;
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || handle.hidden) return;
+      event.preventDefault();
+      drag = {
+        which,
+        sign,
+        startX: event.clientX,
+        startWidth: panelWidth(which),
+        width: panelWidth(which),
+        handle,
+      };
+      workspace.classList.add('is-resizing');
+      handle.classList.add('is-active');
+      handle.setPointerCapture?.(event.pointerId);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    });
+    // 双击恢复这一栏的默认宽度
+    handle.addEventListener('dblclick', () => {
+      writeUiPref(`${which}-w`, PANEL_DEFAULTS[which]);
+      applyPanelWidths();
+      if (state.doc) applyTransform();
+    });
+    // 键盘也能调（无障碍）
+    handle.addEventListener('keydown', (event) => {
+      const step = event.shiftKey ? 32 : 8;
+      const isLeft = which === 'sidebar';
+      const grow = isLeft ? event.key === 'ArrowRight' : event.key === 'ArrowLeft';
+      const shrink = isLeft ? event.key === 'ArrowLeft' : event.key === 'ArrowRight';
+      if (!grow && !shrink) return;
+      event.preventDefault();
+      const [min, max] = PANEL_LIMITS[which];
+      const next = clamp(panelWidth(which) + (grow ? step : -step), min, max);
+      writeUiPref(`${which}-w`, next);
+      applyPanelWidths();
+      if (state.doc) applyTransform();
+    });
+  };
+
+  bind('resizer-left', 'sidebar', 1);
+  bind('resizer-right', 'inspector', -1);
+}
+
 function initLayout() {
   let sidebarCollapsed = isMobile();
   let inspectorCollapsed = isMobile();
@@ -2925,6 +3081,9 @@ function initLayout() {
   }
   $('#app').classList.toggle('sidebar-collapsed', sidebarCollapsed);
   $('#app').classList.toggle('inspector-collapsed', inspectorCollapsed);
+  applyPanelWidths();
+  applyPanelZoom(readUiPref('ui-scale', 1));
+  initResizers();
 }
 
 /** 从 URL 的 #slug 找到对应导图；打不开就返回 null。 */
@@ -2968,6 +3127,10 @@ async function init() {
   else resetDoc();
 
   connectEvents();
+
+  window.addEventListener('resize', () => {
+    applyPanelWidths();
+  });
 
   window.addEventListener('hashchange', () => {
     const fromHash = mapFromLocation();

@@ -188,13 +188,52 @@ kbd {
 .workspace {
   position: relative;
   display: grid;
-  grid-template-columns: var(--sidebar-w, 272px) minmax(0, 1fr) var(--inspector-w, 332px);
+  /* 栏宽由 JS 写进 --sidebar-w / --inspector-w；收起时用 show 乘 0，
+     这样内联的栏宽不会把"收起"覆盖掉。 */
+  grid-template-columns:
+    calc(var(--sidebar-w, 272px) * var(--sidebar-show, 1))
+    minmax(0, 1fr)
+    calc(var(--inspector-w, 332px) * var(--inspector-show, 1));
   min-height: 0;
   min-width: 0;
   transition: grid-template-columns 0.18s ease;
 }
-.app.sidebar-collapsed { --sidebar-w: 0px; }
-.app.inspector-collapsed { --inspector-w: 0px; }
+.app.sidebar-collapsed { --sidebar-show: 0; }
+.app.inspector-collapsed { --inspector-show: 0; }
+/* 拖动中不要有过渡动画，否则跟手会飘 */
+.workspace.is-resizing { transition: none; }
+.workspace.is-resizing * { user-select: none; }
+
+/* ---------- 栏宽拖拽把手 ---------- */
+.resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  margin-left: -3px;
+  z-index: 40;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.resizer:hover::after,
+.resizer.is-active::after { background: var(--accent); }
+.resizer:focus-visible { outline: none; }
+.resizer:focus-visible::after { background: var(--accent); width: 2px; }
+.resizer[hidden] { display: none; }
+#resizer-left { left: calc(var(--sidebar-w, 272px) * var(--sidebar-show, 1)); }
+#resizer-right { right: calc(var(--inspector-w, 332px) * var(--inspector-show, 1)); margin-left: 0; margin-right: -3px; }
 
 /* .app 的四个区块显式定位。
    不能靠自动排布：banner 隐藏时不占格子，后面的元素会整体上移一行，
@@ -320,6 +359,9 @@ kbd {
 .btn.block { width: 100%; }
 
 /* ---------- 左侧导图列表 ---------- */
+/* 侧栏字号：设置里选小 / 标准 / 大 / 特大，只影响左右两栏（画布内容由节点样式控制） */
+.sidebar { zoom: var(--panel-zoom, 1); }
+.inspector { zoom: var(--panel-zoom, 1); }
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -1320,6 +1362,8 @@ dialog.modal::backdrop {
 
 /* 设置 */
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 4px; }
+.settings-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.hint-inline { color: var(--ink-3); font-size: 11px; }
 .settings-grid h3 { margin: 0 0 10px; font-size: 12px; font-weight: 650; color: var(--ink); }
 .settings-grid h3:not(:first-child) { margin-top: 18px; }
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 10px 0 0; font-size: 11.5px; }
@@ -1452,6 +1496,7 @@ dialog.modal::backdrop {
   }
   .app:not(.inspector-collapsed) .inspector { transform: none; }
   .canvas-area { grid-column: 1; grid-row: 1; }
+  .resizer { display: none; }
   .brand-name, .topbar-divider { display: none; }
   .doc-title { max-width: 40vw; }
   .status-left #status-path { display: none; }

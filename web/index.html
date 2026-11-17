@@ -116,6 +116,8 @@
       </div>
     </aside>
 
+    <div class="resizer" id="resizer-left" role="separator" aria-orientation="vertical" aria-label="拖动调整侧栏宽度" tabindex="-1"></div>
+
     <!-- ================= 中间：画布 ================= -->
     <section class="canvas-area" id="canvas-area" aria-label="导图画布">
       <div class="canvas-viewport" id="canvas-viewport" tabindex="-1">
@@ -166,6 +168,8 @@
       <div class="editor-layer" id="editor-layer" aria-hidden="true"></div>
       <div class="drag-hint" id="drag-hint" hidden></div>
     </section>
+
+    <div class="resizer" id="resizer-right" role="separator" aria-orientation="vertical" aria-label="拖动调整属性栏宽度" tabindex="-1"></div>
 
     <!-- ================= 右侧：检查器 ================= -->
     <aside class="inspector" id="inspector" aria-label="节点检查器">
@@ -344,6 +348,22 @@
         </dl>
       </section>
       <section>
+        <h3>界面</h3>
+        <label class="field">
+          <span class="lab">侧栏字号</span>
+          <select class="input select" id="set-ui-scale">
+            <option value="0.9">小</option>
+            <option value="1">标准</option>
+            <option value="1.12">大</option>
+            <option value="1.25">特大</option>
+          </select>
+        </label>
+        <p class="hint">影响左侧导图列表和右侧属性栏的字号，画布里的字号在节点自己的样式里调。</p>
+        <div class="settings-row">
+          <button type="button" class="btn ghost sm" id="btn-reset-panels">恢复默认栏宽</button>
+          <span class="hint-inline" id="set-panel-widths">—</span>
+        </div>
+        <p class="hint">左右两栏的宽度也可以在界面上直接拖动分隔条调整，会记住。</p>
         <h3>能力</h3>
         <dl class="kv">
           <dt>服务端 Chromium</dt><dd id="set-chromium">—</dd>

@@ -147,6 +147,19 @@ The "本节点 / 含子节点" switch at the top right of the colour block sets 
 - **含子节点 (with children)**: the node and every descendant (colours, size and font; box size stays
   single-node because text lengths differ)
 
+### Sidebar font size and widths
+
+Both side panels adapt to how you work, and the settings are remembered:
+
+- **Font size**: Settings → Interface → sidebar font size, four steps (small / normal / large / extra
+  large). It only affects the two side panels — text inside the canvas follows each node's own style.
+- **Width**: drag the divider between a panel and the canvas; double-click a divider to reset that
+  panel to its default width
+- Settings → Interface also has a "reset panel widths" button and shows the current widths in pixels
+- When a divider has keyboard focus you can nudge it with `←` `→`
+
+![The settings dialog: storage on the left, interface / capabilities / shortcuts on the right](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/settings.png)
+
 ## 2. Edit the same map as an AI
 
 This is the main reason the tool exists.

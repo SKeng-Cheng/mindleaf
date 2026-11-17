@@ -615,6 +615,96 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：左右栏拖动改宽、设置里改侧栏字号', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  const measure = () =>
+    browser.evaluate(`({
+      sidebar: Math.round(document.querySelector('#sidebar').getBoundingClientRect().width),
+      inspector: Math.round(document.querySelector('#inspector').getBoundingClientRect().width),
+      canvas: Math.round(document.querySelector('#canvas-area').getBoundingClientRect().width),
+      leftHandle: !document.querySelector('#resizer-left').hidden,
+      rightHandle: !document.querySelector('#resizer-right').hidden,
+    })`);
+
+  const start = await measure();
+  assert.equal(start.sidebar, 272, `侧栏默认 272px，实际 ${start.sidebar}`);
+  assert.equal(start.inspector, 332, `属性栏默认 332px，实际 ${start.inspector}`);
+  assert.equal(start.leftHandle, true, '左侧应有拖动把手');
+  assert.equal(start.rightHandle, true, '右侧应有拖动把手');
+
+  // 拖左边把手向右 80px
+  const dragBy = (selector, dx) =>
+    browser.evaluate(`(async () => {
+      const handle = document.querySelector('${selector}');
+      const rect = handle.getBoundingClientRect();
+      const point = (x) => ({ bubbles: true, cancelable: true, clientX: x, clientY: 300, button: 0, pointerId: 1, pointerType: 'mouse' });
+      handle.dispatchEvent(new PointerEvent('pointerdown', point(rect.x + 3)));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      for (let step = 1; step <= 8; step += 1) {
+        window.dispatchEvent(new PointerEvent('pointermove', point(rect.x + 3 + (${dx} * step) / 8)));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      window.dispatchEvent(new PointerEvent('pointerup', point(rect.x + 3 + ${dx})));
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    })()`);
+
+  await dragBy('#resizer-left', 80);
+  const afterLeft = await measure();
+  assert.ok(Math.abs(afterLeft.sidebar - (start.sidebar + 80)) <= 2, `侧栏应约 352px，实际 ${afterLeft.sidebar}`);
+  assert.equal(afterLeft.inspector, start.inspector, '拖左边不应影响右边');
+  assert.ok(afterLeft.canvas < start.canvas, '画布应变窄');
+
+  await dragBy('#resizer-right', -70);
+  const afterRight = await measure();
+  assert.ok(Math.abs(afterRight.inspector - (start.inspector + 70)) <= 2, `属性栏应约 402px，实际 ${afterRight.inspector}`);
+  assert.ok(afterRight.canvas < afterLeft.canvas, '画布应再窄一点');
+
+  // 刷新后宽度还在
+  await browser.evaluate(`location.reload()`);
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  const reloaded = await measure();
+  assert.equal(reloaded.sidebar, afterRight.sidebar, '刷新后侧栏宽度应被记住');
+  assert.equal(reloaded.inspector, afterRight.inspector, '刷新后属性栏宽度应被记住');
+
+  // 设置里改侧栏字号
+  const zoomed = await browser.evaluate(`(async () => {
+    document.querySelector('#btn-settings').click();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const select = document.querySelector('#set-ui-scale');
+    select.value = '1.25';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const app = document.querySelector('#app');
+    return {
+      zoomVar: getComputedStyle(app).getPropertyValue('--panel-zoom').trim(),
+      sidebarZoom: getComputedStyle(document.querySelector('#sidebar')).zoom,
+      inspectorZoom: getComputedStyle(document.querySelector('#inspector')).zoom,
+      canvasZoom: getComputedStyle(document.querySelector('#canvas-area')).zoom,
+      widthText: document.querySelector('#set-panel-widths').textContent,
+    };
+  })()`);
+  assert.equal(zoomed.zoomVar, '1.25');
+  assert.equal(Number(zoomed.sidebarZoom), 1.25, '侧栏应放大');
+  assert.equal(Number(zoomed.inspectorZoom), 1.25, '属性栏应放大');
+  assert.equal(Number(zoomed.canvasZoom), 1, '画布不应被缩放');
+  assert.match(zoomed.widthText, /左 \d+px · 右 \d+px/);
+
+  // 恢复默认栏宽
+  await browser.evaluate(`document.querySelector('#btn-reset-panels').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const reset = await measure();
+  assert.equal(reset.sidebar, 272, '恢复默认后侧栏 272px');
+  assert.equal(reset.inspector, 332, '恢复默认后属性栏 332px');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：窄屏不崩、无横向滚动', { skip, timeout: 60000 }, async (t) => {
   const { session, slug } = await bootProject();
   const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);

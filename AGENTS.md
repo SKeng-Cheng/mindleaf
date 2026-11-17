@@ -125,6 +125,9 @@ examples/               示例导图
 
 ## 开发约定
 
+- 网页里左右两栏的宽度存在 `--sidebar-w` / `--inspector-w`，收起用的是
+  `--sidebar-show` / `--inspector-show`（乘 0）。改布局时别再让内联栏宽覆盖掉"收起"。
+- 侧栏字号用 `.sidebar` / `.inspector` 上的 `zoom: var(--panel-zoom)`，别去挨个改字号。
 - **零依赖**是硬约束：不引入 npm 包（`package.json` 里没有 `dependencies` 是刻意的）。
 - 改核心逻辑后跑 `npm test`（`node --test`），全部用例必须通过。
 - 新增 op：`src/core/ops.mjs` 加函数 + 注册到 `applyOps` 的 switch + 更新 `OP_NAMES`，
