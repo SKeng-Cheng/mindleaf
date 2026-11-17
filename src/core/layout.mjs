@@ -260,6 +260,7 @@ export function layoutDoc(doc, options = {}) {
       textColor: node.textColor ?? null,
       lineColor: lineColorOf.get(node.id) ?? null,
       links: node.links ?? [],
+      hasAnnotation: Boolean(node.annotation),
       collapsed: isCollapsed(node),
       expandable: (children.get(node.id) ?? []).length > 0,
       parentId: node.parent,

@@ -615,6 +615,198 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：节点批注 —— 写在备注和颜色之间，落盘并显示标记', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  // 选中一个节点
+  const nodeId = await browser.evaluate(`(async () => {
+    const groups = [...document.querySelectorAll('#canvas-stage g[data-node-id]')];
+    const target = groups[1] ?? groups[0];
+    const rect = target.querySelector('rect').getBoundingClientRect();
+    const opts = { bubbles: true, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2, button: 0, pointerId: 1 };
+    target.dispatchEvent(new PointerEvent('pointerdown', opts));
+    target.dispatchEvent(new PointerEvent('pointerup', opts));
+    target.dispatchEvent(new MouseEvent('click', opts));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return target.dataset.nodeId;
+  })()`);
+
+  // 位置检查：批注在备注之后、颜色之前
+  const order = await browser.evaluate(`(() => {
+    const section = document.querySelector('#insp-annotation')?.closest('section');
+    const note = document.querySelector('#insp-note')?.closest('section');
+    const color = document.querySelector('.color-head')?.closest('section');
+    const sections = [...document.querySelectorAll('.insp-scroll > section')];
+    return {
+      annotation: sections.indexOf(section),
+      note: sections.indexOf(note),
+      color: sections.indexOf(color),
+      placeholder: document.querySelector('#insp-annotation')?.placeholder ?? '',
+    };
+  })()`);
+  assert.ok(order.note >= 0 && order.annotation > order.note, `批注应在备注之后：备注 ${order.note}，批注 ${order.annotation}`);
+  assert.ok(order.color > order.annotation, `批注应在颜色之前：批注 ${order.annotation}，颜色 ${order.color}`);
+  assert.match(order.placeholder, /AI/);
+
+  // 写一段批注，等防抖落盘
+  await browser.evaluate(`(async () => {
+    const box = document.querySelector('#insp-annotation');
+    box.focus();
+    box.value = '把这三个子节点合并成两个，名字再短一点';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    box.blur();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    // 切到别的节点再切回来，强制检查器重绘（和用户切走再切回来一样）
+    const clickNode = async (group) => {
+      const rect = group.querySelector('rect').getBoundingClientRect();
+      const opts = { bubbles: true, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2, button: 0, pointerId: 1 };
+      group.dispatchEvent(new PointerEvent('pointerdown', opts));
+      group.dispatchEvent(new PointerEvent('pointerup', opts));
+      group.dispatchEvent(new MouseEvent('click', opts));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    };
+    const groups = [...document.querySelectorAll('#canvas-stage g[data-node-id]')];
+    const target = groups.find((group) => group.dataset.nodeId === '${nodeId}');
+    await clickNode(groups.find((group) => group.dataset.nodeId !== '${nodeId}'));
+    await clickNode(target);
+  })()`);
+  let doc = session.store.read(slug).doc;
+  let node = doc.nodes.find((item) => item.id === nodeId);
+  assert.equal(node.annotation, '把这三个子节点合并成两个，名字再短一点', '批注应写进文件');
+
+  // 画布上出现标记
+  const marked = await browser.evaluate(`({
+    marks: document.querySelectorAll('#canvas-stage [data-annotation="1"]').length,
+    filled: document.querySelector('#insp-annotation').classList.contains('has-value'),
+    value: document.querySelector('#insp-annotation').value,
+    hasClear: !!document.querySelector('[data-act="annotation-clear"]'),
+  })`);
+  assert.equal(marked.marks, 1, '画布上该节点应有批注标记');
+  assert.equal(marked.value, '把这三个子节点合并成两个，名字再短一点', '重选节点后批注应回显');
+  assert.equal(marked.filled, true, '有批注时输入框应有高亮状态');
+  assert.equal(marked.hasClear, true, '有批注时应出现「清空」按钮');
+
+  // 大纲里也有标记
+  await browser.evaluate(`(async () => {
+    document.querySelector('#tab-outline').click();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  })()`);
+  const inOutline = await browser.evaluate(`document.querySelectorAll('.outline-annotation-dot').length`);
+  assert.equal(inOutline, 1, '大纲里也应有批注标记');
+  await browser.evaluate(`document.querySelector('#tab-maps').click()`);
+
+  // 清空按钮
+  await browser.evaluate(`(async () => {
+    document.querySelector('#insp-annotation')?.closest('section');
+    document.querySelector('[data-act="annotation-clear"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  })()`);
+  doc = session.store.read(slug).doc;
+  node = doc.nodes.find((item) => item.id === nodeId);
+  assert.equal(node.annotation, undefined, '清空后文件里不应再有批注');
+  const afterClean = await browser.evaluate(`document.querySelectorAll('#canvas-stage [data-annotation="1"]').length`);
+  assert.equal(afterClean, 0, '清空后画布标记应消失');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
+test('浏览器：节点备注悬停提示（延迟可设置、位置跟随鼠标、字号跟随侧栏）', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const noteText = '这条备注用来验证悬停提示：停留够久就浮出来，移开就消失。';
+  session.store.applyOps(slug, [{ op: 'updateNode', id: session.store.read(slug).doc.nodes[1].id, note: noteText }], { by: 'user' });
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  const hover = (delayMs) =>
+    browser.evaluate(`(async () => {
+      // 通过设置界面改延迟（和用户操作一致）
+      document.querySelector('#btn-settings').click();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const select = document.querySelector('#set-note-delay');
+      select.value = '${delayMs}';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      document.querySelector('#dlg-settings').close();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const groups = [...document.querySelectorAll('#canvas-stage g[data-node-id]')];
+      const target = groups[1];
+      const rect = target.querySelector('rect').getBoundingClientRect();
+      const x = rect.x + rect.width / 2;
+      const y = rect.y + rect.height / 2;
+      target.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse' }));
+      const rightAfter = document.querySelector('#note-tooltip').hidden;
+      await new Promise((resolve) => setTimeout(resolve, ${delayMs} + 700));
+      const tip = document.querySelector('#note-tooltip');
+      const box = tip.getBoundingClientRect();
+      return {
+        rightAfter,
+        hidden: tip.hidden,
+        body: document.querySelector('#note-tooltip-body').textContent,
+        title: document.querySelector('#note-tooltip-title').textContent,
+        fontSize: getComputedStyle(tip).fontSize,
+        left: Math.round(box.left),
+        top: Math.round(box.top),
+        mouseX: Math.round(x),
+        mouseY: Math.round(y),
+      };
+    })()`);
+
+  const shown = await hover(1000);
+  assert.equal(shown.rightAfter, true, '刚移上去时不该立刻弹');
+  assert.equal(shown.hidden, false, '停留 1 秒后应弹出');
+  assert.equal(shown.body, noteText, '气泡里应显示备注原文');
+  assert.ok(shown.title.length > 0, '气泡应有节点标题');
+  assert.ok(shown.left >= shown.mouseX - 40 && shown.top >= shown.mouseY - 40, '气泡应出现在鼠标附近');
+  assert.equal(shown.fontSize, '12.8px', '默认字号与侧栏一致');
+
+  // 移开就消失
+  const moved = await browser.evaluate(`(async () => {
+    const viewport = document.querySelector('#canvas-viewport');
+    viewport.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 4, clientY: 4, pointerId: 1, pointerType: 'mouse' }));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return document.querySelector('#note-tooltip').hidden;
+  })()`);
+  assert.equal(moved, true, '鼠标移开后气泡应消失');
+
+  // 关掉（延迟 0）就不弹
+  const off = await hover(0);
+  assert.equal(off.hidden, true, '设置成关闭后不应弹出');
+
+  // 字号跟随侧栏字号
+  const scaled = await browser.evaluate(`(async () => {
+    document.querySelector('#btn-settings').click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const scale = document.querySelector('#set-ui-scale');
+    scale.value = '1.25';
+    scale.dispatchEvent(new Event('change', { bubbles: true }));
+    const delay = document.querySelector('#set-note-delay');
+    delay.value = '500';
+    delay.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelector('#dlg-settings').close();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const groups = [...document.querySelectorAll('#canvas-stage g[data-node-id]')];
+    const rect = groups[1].querySelector('rect').getBoundingClientRect();
+    groups[1].dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: rect.x + 8, clientY: rect.y + 8, pointerId: 1, pointerType: 'mouse' }));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const tip = document.querySelector('#note-tooltip');
+    return { hidden: tip.hidden, fontSize: getComputedStyle(tip).fontSize };
+  })()`);
+  assert.equal(scaled.hidden, false);
+  assert.equal(scaled.fontSize, '16px', '侧栏字号 1.25 时气泡字号也应是 12.8×1.25');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：左右栏拖动改宽、设置里改侧栏字号', { skip, timeout: 120000 }, async (t) => {
   const { session, slug } = await bootProject();
   const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);

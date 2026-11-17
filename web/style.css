@@ -646,6 +646,14 @@ kbd {
   white-space: nowrap;
 }
 .outline-depth-0 .outline-text { font-weight: 600; color: var(--ink); }
+.outline-annotation-dot {
+  flex: none;
+  margin-left: 2px;
+  color: var(--warn, #b45309);
+  font-size: 10px;
+  line-height: 1;
+}
+
 .outline-note-dot {
   width: 4px;
   height: 4px;
@@ -996,6 +1004,70 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
   box-shadow: var(--shadow-sm);
 }
 .seg.mini .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------- 节点备注悬浮提示 ---------- */
+.note-tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: calc(320px * var(--panel-zoom, 1));
+  padding: calc(9px * var(--panel-zoom, 1)) calc(11px * var(--panel-zoom, 1));
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+  /* 字号跟左右两栏一致：两栏用的是 zoom，这里用同样的比例放大字号 */
+  font-size: calc(12.8px * var(--panel-zoom, 1));
+  line-height: 1.6;
+  pointer-events: none;
+  animation: note-tooltip-in 0.12s ease;
+}
+.note-tooltip[hidden] { display: none; }
+@keyframes note-tooltip-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: none; }
+}
+.note-tooltip-head {
+  margin-bottom: calc(3px * var(--panel-zoom, 1));
+  color: var(--ink-3);
+  font-size: calc(10.5px * var(--panel-zoom, 1));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(290px * var(--panel-zoom, 1));
+}
+.note-tooltip-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- 批注（写给 AI 的修改要求） ---------- */
+.annotation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lab-tag {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--warn-bg, #fffbeb);
+  color: var(--warn, #b45309);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.annotation-input {
+  border-color: var(--warn-border, #fde68a);
+  background: var(--warn-bg, #fffbeb);
+}
+.annotation-input.has-value {
+  border-color: var(--warn, #b45309);
+  box-shadow: inset 3px 0 0 var(--warn, #b45309);
+}
+.annotation-input::placeholder { color: var(--ink-3); }
+.annotation-hint { line-height: 1.55; }
+.btn.xs { height: 22px; padding: 0 7px; font-size: 11px; border-radius: 6px; }
 
 /* ---------- 字体与尺寸 ---------- */
 .type-grid {

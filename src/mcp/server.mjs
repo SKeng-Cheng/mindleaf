@@ -14,7 +14,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, StoreError, findProjectRoot } from '../server/store.mjs';
-import { FONTS, FONT_KEYS, getNode, rootOf, outline, eachNode, docStats, DocError } from '../core/doc.mjs';
+import {
+  FONTS,
+  FONT_KEYS,
+  annotationsOf,
+  getNode,
+  rootOf,
+  outline,
+  eachNode,
+  docStats,
+  DocError,
+} from '../core/doc.mjs';
 import { fromMarkdown, guessTitle, toMarkdown } from '../core/markdown.mjs';
 import { OP_NAMES } from '../core/ops.mjs';
 import { detectEngines } from '../export/raster.mjs';
@@ -55,7 +65,10 @@ const INSTRUCTIONS = `Mindleaf 是一份本地思维导图文件（<slug>.mindma
 3. 每次写操作都会给文档 rev +1，并写一条 journal。人类在网页里的修改同样会 +1，
    所以用 mindleaf_recent_changes 就能知道"人刚刚改了什么"。
 4. 导图可以打标签（update_map 的 tags），list_maps 可以用 tag 过滤，list_tags 看全部标签。
-5. 需要给人类看图时用 mindleaf_open_in_browser 起本地网页，人类会看到同一份文件。
+5. **节点上的批注（annotation）是人类写给你的修改要求，必须照着改**：read_map 的 outline 里
+   以 "⚑ 批注:" 标出，也可以用 mindleaf_list_annotations 一次列出全部。处理完把该节点的
+   annotation 置空（update_node annotation: ""），并在 note 里留一句改了什么。
+6. 需要给人类看图时用 mindleaf_open_in_browser 起本地网页，人类会看到同一份文件。
 
 Mindleaf is a file-first mind map for humans and agents. Prefer node ids over text.
 Read with mindleaf_read_map, write with mindleaf_add_node / mindleaf_update_node /
@@ -156,6 +169,42 @@ export function createTools(store) {
 
   add(
     {
+      name: 'mindleaf_list_annotations',
+      description:
+        'List every node the human has annotated — these are instructions you are expected to carry out. Omit map to scan all maps. Clear each annotation with mindleaf_update_node annotation:"" when done.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          map: { type: 'string', description: 'Only look at this map. Omit to scan every map.' },
+        },
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const targets = args.map ? [store.read(args.map)] : store.list().map((item) => store.read(item.slug));
+      if (!targets.length) return toolResult('还没有导图。');
+      const blocks = [];
+      for (const target of targets) {
+        const items = annotationsOf(target.doc);
+        if (!items.length) continue;
+        blocks.push(
+          `## ${target.doc.title}  (slug: ${target.slug})\n` +
+            items
+              .map((item) => `- 〔${item.id}〕「${item.text}」\n  ⚑ ${item.annotation.replace(/\n/g, '\n    ')}`)
+              .join('\n'),
+        );
+      }
+      if (!blocks.length) {
+        return toolResult(args.map ? '这张图上没有待处理的批注。' : '所有导图都没有待处理的批注。');
+      }
+      return toolResult(
+        `共 ${blocks.length} 张图有待处理批注：\n\n${blocks.join('\n\n')}\n\n按批注改完之后，用 mindleaf_update_node 把对应节点的 annotation 置空，并在 note 里写一句改了什么。`,
+      );
+    },
+  );
+
+  add(
+    {
       name: 'mindleaf_list_templates',
       description: 'List built-in mind map templates (id, title, description, size). Pass the id as "template" to mindleaf_create_map.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -214,6 +263,7 @@ export function createTools(store) {
           format: { type: 'string', enum: ['outline', 'json', 'markdown'], default: 'outline' },
           withNotes: { type: 'boolean', description: 'Include node notes in the outline.', default: false },
           withLinks: { type: 'boolean', description: 'Include links in the outline.', default: true },
+          withAnnotations: { type: 'boolean', description: 'Include node annotations (human requests for the agent). On by default.', default: true },
         },
         required: ['map'],
         additionalProperties: false,
@@ -227,7 +277,20 @@ export function createTools(store) {
       const header = `# ${doc.title}  (slug: ${slug}, rev ${doc.rev}, ${stats.nodes} 节点, 深 ${stats.maxDepth}${tagText})\n文件: ${file}\n`;
       if (format === 'json') return toolResult(header + JSON.stringify(doc, null, 2));
       if (format === 'markdown') return toolResult(header + '\n' + toMarkdown(doc));
-      return toolResult(header + '\n' + outline(doc, { withNotes: args.withNotes === true, withLinks: args.withLinks !== false }));
+      const hints = annotationsOf(doc);
+      const hintLine = hints.length
+        ? `\n⚠️ 有 ${hints.length} 条批注等你处理（节点 ${hints.map((item) => item.id).join(', ')}），先看 ⚑ 标记再动手。\n`
+        : '';
+      return toolResult(
+        header +
+          hintLine +
+          '\n' +
+          outline(doc, {
+            withNotes: args.withNotes === true,
+            withLinks: args.withLinks !== false,
+            withAnnotations: args.withAnnotations !== false,
+          }),
+      );
     },
   );
 
@@ -293,6 +356,11 @@ export function createTools(store) {
           font: { type: 'string', description: 'Font key: system / hei / song / kai / mono / serif. "" restores the default.' },
           boxWidth: { description: 'Fixed box width in px (44-600), or "" to auto-fit the text.', oneOf: [{ type: 'number' }, { type: 'string' }] },
           boxHeight: { description: 'Minimum box height in px (24-500), or "" to auto-fit the text.', oneOf: [{ type: 'number' }, { type: 'string' }] },
+          annotation: {
+            type: 'string',
+            description:
+              'Instruction the human left for the agent on this node. Pass "" to clear it once handled. Single node only.',
+          },
           subtree: {
             type: 'boolean',
             description: 'Apply colors / fontSize / font to this node and every descendant. Box size fields are not allowed in this mode.',
@@ -318,7 +386,7 @@ export function createTools(store) {
       const { doc } = store.read(args.map);
       const node = resolveNodeRef(doc, args.id);
       const patch = { op: 'updateNode', id: node.id };
-      for (const key of ['text', 'note', 'collapsed', 'color', 'textColor', 'lineColor', 'fontSize', 'font', 'boxWidth', 'boxHeight', 'links']) {
+      for (const key of ['text', 'note', 'collapsed', 'color', 'textColor', 'lineColor', 'fontSize', 'font', 'boxWidth', 'boxHeight', 'annotation', 'links']) {
         if (args[key] !== undefined) patch[key] = args[key];
       }
       if (args.subtree === true) patch.subtree = true;

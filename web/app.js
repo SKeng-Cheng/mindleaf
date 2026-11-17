@@ -549,6 +549,7 @@ function renderOutline() {
         <button type="button" class="outline-caret${node.collapsed ? ' is-collapsed' : ''}${kids ? '' : ' is-leaf'}" data-caret="${esc(node.id)}" tabindex="-1" title="${node.collapsed ? '展开' : '收起'}" aria-label="${node.collapsed ? '展开' : '收起'}">${caret}</button>
         <span class="outline-text" title="${esc(node.text)}">${esc(node.text || '(空)')}</span>
         ${node.note ? '<span class="outline-note-dot" title="有备注"></span>' : ''}
+        ${node.annotation ? '<span class="outline-annotation-dot" title="有批注（写给 AI 的修改要求）">⚑</span>' : ''}
         ${kids ? `<span class="outline-count">${kids}</span>` : ''}
       </div>`;
     })
@@ -699,6 +700,15 @@ function nodeInspectorHtml(node) {
       <section class="field">
         <label class="lab" for="insp-note">备注</label>
         <textarea class="input textarea" id="insp-note" rows="3" placeholder="补充说明、待办、出处…">${esc(node.note ?? '')}</textarea>
+      </section>
+      <section class="field">
+        <div class="annotation-head">
+          <span class="lab">批注 <span class="lab-tag">给 AI 看</span></span>
+          ${node.annotation ? '<button type="button" class="btn ghost xs" data-act="annotation-clear" title="清空这条批注">清空</button>' : ''}
+        </div>
+        <textarea class="input textarea annotation-input${node.annotation ? ' has-value' : ''}" id="insp-annotation" rows="3" maxlength="4000"
+          placeholder="想让 AI 在这里改什么？例如：把这三个子节点合并成两个，名字更短一点">${esc(node.annotation ?? '')}</textarea>
+        <p class="hint annotation-hint">AI 读取导图时会先看到批注，按批注改完后会清空并记一条 journal。画布上带橙色小点的节点有批注。</p>
       </section>
       <section class="field">
         <div class="color-head">
@@ -1671,6 +1681,8 @@ function fillSettings() {
   $('#set-version').textContent = boot ? `v${boot.version}` : '—';
   const scale = readUiPref('ui-scale', 1);
   $('#set-ui-scale').value = PANEL_ZOOMS.includes(Number(scale)) ? String(Number(scale)) : '1';
+  const delaySelect = $('#set-note-delay');
+  if (delaySelect) delaySelect.value = String(noteHoverDelay());
   const widths = $('#set-panel-widths');
   if (widths) widths.textContent = `左 ${panelWidth('sidebar')}px · 右 ${panelWidth('inspector')}px`;
   $('#settings-error').hidden = true;
@@ -1917,6 +1929,38 @@ function saveNoteValue(id, value) {
   runOps([{ op: 'updateNode', id, note: value }], { label: '编辑备注' });
 }
 
+let annotationTimer = null;
+
+function scheduleAnnotationSave(value) {
+  const id = state.selectedId;
+  if (annotationTimer) clearTimeout(annotationTimer);
+  annotationTimer = setTimeout(() => {
+    annotationTimer = null;
+    saveAnnotationValue(id, value);
+  }, 650);
+}
+
+function saveAnnotationValue(id, value) {
+  const node = state.doc && getNode(state.doc, id);
+  if (!node) return;
+  if ((node.annotation ?? '') === value.trim()) return;
+  runOps([{ op: 'updateNode', id, annotation: value }], { label: value.trim() ? '写批注' : '清空批注' });
+}
+
+function saveAnnotationNow(value) {
+  if (annotationTimer) {
+    clearTimeout(annotationTimer);
+    annotationTimer = null;
+  }
+  saveAnnotationValue(state.selectedId, value);
+}
+
+async function clearAnnotation() {
+  const node = state.doc && getNode(state.doc, state.selectedId);
+  if (!node?.annotation) return;
+  await runOps([{ op: 'updateNode', id: node.id, annotation: '' }], { label: '清空批注' });
+}
+
 function saveNoteNow(value) {
   if (noteTimer) {
     clearTimeout(noteTimer);
@@ -2076,6 +2120,9 @@ async function handleInspectorAction(act, element) {
       break;
     case 'copy-id':
       if (node) copyText(node.id);
+      break;
+    case 'annotation-clear':
+      clearAnnotation();
       break;
     case 'style':
       updateStyle(element.dataset.field, element.dataset.value ?? '');
@@ -2496,6 +2543,12 @@ function bindEvents() {
     toast('侧栏字号已更新');
     if (state.doc) applyTransform();
   });
+  $('#set-note-delay').addEventListener('change', (event) => {
+    const value = NOTE_DELAY_CHOICES.includes(Number(event.target.value)) ? Number(event.target.value) : 1500;
+    writeUiPref('note-delay', value);
+    hideNoteTooltip();
+    toast(value ? `备注提示：停留 ${value / 1000} 秒后显示` : '已关闭备注悬停提示');
+  });
   $('#btn-reset-panels').addEventListener('click', () => {
     resetPanelWidths();
     toast('已恢复默认栏宽', { tone: 'ok' });
@@ -2649,9 +2702,15 @@ function bindEvents() {
   const viewport = $('#canvas-viewport');
   viewport.addEventListener('pointerdown', onCanvasPointerDown);
   viewport.addEventListener('pointermove', onCanvasPointerMove);
+  viewport.addEventListener('pointermove', onCanvasHoverMove);
+  viewport.addEventListener('pointerleave', hideNoteTooltip);
+  viewport.addEventListener('pointerdown', hideNoteTooltip);
   viewport.addEventListener('pointerup', onCanvasPointerUp);
   viewport.addEventListener('pointercancel', onCanvasPointerUp);
-  viewport.addEventListener('wheel', onCanvasWheel, { passive: false });
+  viewport.addEventListener('wheel', (event) => {
+    hideNoteTooltip();
+    onCanvasWheel(event);
+  }, { passive: false });
   viewport.addEventListener('dblclick', onCanvasDblClick);
 
   // ---- 检查器 ----
@@ -2672,6 +2731,7 @@ function bindEvents() {
   inspector.addEventListener('input', (event) => {
     const target = event.target;
     if (target.id === 'insp-note') scheduleNoteSave(target.value);
+    else if (target.id === 'insp-annotation') scheduleAnnotationSave(target.value);
     else if (target.id === 'link-target') {
       state.linkDraft.target = target.value;
       updateLinkGuess();
@@ -2699,6 +2759,7 @@ function bindEvents() {
     }
     if (target.id === 'insp-text') commitInspectorText(target.value);
     else if (target.id === 'insp-note') saveNoteNow(target.value);
+    else if (target.id === 'insp-annotation') saveAnnotationNow(target.value);
     else if (target.id === 'link-kind') state.linkDraft.kind = target.value;
   });
   inspector.addEventListener('focusout', () => {
@@ -2972,10 +3033,91 @@ function applyPanelWidths() {
   if (label) label.textContent = `左 ${panelWidth('sidebar')}px · 右 ${panelWidth('inspector')}px`;
 }
 
+/* ---- 节点备注悬浮提示 ---- */
+
+/** 鼠标在节点上停留多少毫秒后弹备注（0 = 关闭）。 */
+const NOTE_DELAY_CHOICES = [0, 500, 1000, 1500, 2000, 3000];
+
+function noteHoverDelay() {
+  const raw = Number(readUiPref('note-delay', 1500));
+  return NOTE_DELAY_CHOICES.includes(raw) ? raw : 1500;
+}
+
+let noteHoverTimer = null;
+let noteHoverId = null;
+
+function hideNoteTooltip() {
+  if (noteHoverTimer) {
+    clearTimeout(noteHoverTimer);
+    noteHoverTimer = null;
+  }
+  noteHoverId = null;
+  const tip = $('#note-tooltip');
+  if (tip && !tip.hidden) tip.hidden = true;
+}
+
+/** 把提示气泡放在鼠标右下方，超出视口时自动翻到另一侧。 */
+function positionNoteTooltip(clientX, clientY) {
+  const tip = $('#note-tooltip');
+  if (!tip || tip.hidden) return;
+  const rect = tip.getBoundingClientRect();
+  const gap = 14;
+  let left = clientX + gap;
+  let top = clientY + gap;
+  if (left + rect.width > window.innerWidth - 8) left = clientX - rect.width - gap;
+  if (top + rect.height > window.innerHeight - 8) top = clientY - rect.height - gap;
+  tip.style.left = `${Math.max(8, left)}px`;
+  tip.style.top = `${Math.max(8, top)}px`;
+}
+
+function showNoteTooltip(node, clientX, clientY) {
+  const tip = $('#note-tooltip');
+  if (!tip) return;
+  const note = String(node.note ?? '').trim();
+  if (!note) return;
+  $('#note-tooltip-title').textContent = node.text || '(空)';
+  $('#note-tooltip-body').textContent = note;
+  tip.hidden = false;
+  positionNoteTooltip(clientX, clientY);
+}
+
+function onCanvasHoverMove(event) {
+  if (event.pointerType && event.pointerType !== 'mouse') return;
+  // 拖动 / 平移 / 缩放的时候别弹
+  if (state.drag?.mode === 'node' && state.drag.moved) {
+    hideNoteTooltip();
+    return;
+  }
+  const group = event.target.closest?.('g[data-node-id]');
+  const nodeId = group?.dataset.nodeId ?? null;
+  if (!nodeId) {
+    hideNoteTooltip();
+    return;
+  }
+  const tooltip = $('#note-tooltip');
+  if (noteHoverId === nodeId) {
+    // 已经在这个节点上：气泡开着就跟着鼠标走
+    if (tooltip && !tooltip.hidden) positionNoteTooltip(event.clientX, event.clientY);
+    return;
+  }
+  hideNoteTooltip();
+  const delay = noteHoverDelay();
+  if (!delay) return;
+  noteHoverId = nodeId;
+  const { clientX, clientY } = event;
+  noteHoverTimer = setTimeout(() => {
+    noteHoverTimer = null;
+    if (!state.doc) return;
+    const node = getNode(state.doc, nodeId);
+    if (node) showNoteTooltip(node, clientX, clientY);
+  }, delay);
+}
+
 /** 侧栏字号（0.9 / 1 / 1.12 / 1.25），只作用于左右两栏。 */
 function applyPanelZoom(scale) {
   const value = PANEL_ZOOMS.includes(Number(scale)) ? Number(scale) : 1;
-  $('#app').style.setProperty('--panel-zoom', String(value));
+  // 挂在 documentElement 上：这样画布上的备注气泡也能拿到同一个比例
+  document.documentElement.style.setProperty('--panel-zoom', String(value));
   const select = $('#set-ui-scale');
   if (select) select.value = String(value);
   writeUiPref('ui-scale', value);

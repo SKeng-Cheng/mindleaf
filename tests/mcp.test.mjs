@@ -300,6 +300,47 @@ test('MCP: 字号、字体、框尺寸与 list_fonts', async (t) => {
   assert.match(blocked.text, /只能改颜色/);
 });
 
+test('MCP: 批注 —— read_map 提示、list_annotations 汇总、改完能清空', async (t) => {
+  const projectDir = tempProject();
+  const mcp = await startMcp(projectDir);
+  t.after(() => mcp.close());
+  await mcp.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+
+  await mcp.callTool('mindleaf_create_map', { title: '批注图', rootText: '根' });
+  const branch = await mcp.callTool('mindleaf_add_node', { map: '批注图', text: '第三章' });
+  const branchId = /〔(n_[a-z0-9]+)〕/.exec(branch.text)?.[1];
+
+  // 没人写批注时，list_annotations 是空的
+  const empty = await mcp.callTool('mindleaf_list_annotations', {});
+  assert.match(empty.text, /没有待处理的批注/);
+
+  // 人类写一条批注（用 update_node 模拟，网页里是同一个 op）
+  const wrote = await mcp.callTool('mindleaf_update_node', {
+    map: '批注图',
+    id: branchId,
+    annotation: '把这一章拆成两节',
+  });
+  assert.equal(wrote.isError, false, wrote.text);
+
+  // read_map 顶部要有提示，outline 里要有 ⚑
+  const read = await mcp.callTool('mindleaf_read_map', { map: '批注图' });
+  assert.match(read.text, /有 1 条批注等你处理/);
+  assert.match(read.text, /⚑ 批注: 把这一章拆成两节/);
+
+  const listed = await mcp.callTool('mindleaf_list_annotations', {});
+  assert.match(listed.text, /批注图/);
+  assert.match(listed.text, /把这一章拆成两节/);
+  assert.match(listed.text, new RegExp(branchId));
+
+  // 处理完清空
+  const cleared = await mcp.callTool('mindleaf_update_node', { map: '批注图', id: branchId, annotation: '' });
+  assert.equal(cleared.isError, false, cleared.text);
+  const after = await mcp.callTool('mindleaf_list_annotations', {});
+  assert.match(after.text, /没有待处理的批注/);
+  const reread = await mcp.callTool('mindleaf_read_map', { map: '批注图' });
+  assert.doesNotMatch(reread.text, /⚑/, '清空后不应再出现批注');
+});
+
 test('MCP: 标签 —— update_map 打标签、list_map 过滤、list_tags 汇总', async (t) => {
   const projectDir = tempProject();
   const mcp = await startMcp(projectDir);

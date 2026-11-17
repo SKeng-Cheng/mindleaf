@@ -327,6 +327,12 @@
   </form>
 </dialog>
 
+<!-- ================= 节点备注悬浮提示 ================= -->
+<div class="note-tooltip" id="note-tooltip" role="tooltip" hidden>
+  <div class="note-tooltip-head" id="note-tooltip-title"></div>
+  <div class="note-tooltip-body" id="note-tooltip-body"></div>
+</div>
+
 <!-- ================= 设置 ================= -->
 <dialog class="modal modal-lg" id="dlg-settings">
   <form class="modal-card" id="form-settings" novalidate>
@@ -359,6 +365,18 @@
           </select>
         </label>
         <p class="hint">影响左侧导图列表和右侧属性栏的字号，画布里的字号在节点自己的样式里调。</p>
+        <label class="field">
+          <span class="lab">备注悬停提示</span>
+          <select class="input select" id="set-note-delay">
+            <option value="0">关闭</option>
+            <option value="500">停 0.5 秒</option>
+            <option value="1000">停 1 秒</option>
+            <option value="1500">停 1.5 秒</option>
+            <option value="2000">停 2 秒</option>
+            <option value="3000">停 3 秒</option>
+          </select>
+        </label>
+        <p class="hint">鼠标在节点上停留这么久后，在鼠标旁边浮出这个节点的备注；没有备注的节点不弹。</p>
         <div class="settings-row">
           <button type="button" class="btn ghost sm" id="btn-reset-panels">恢复默认栏宽</button>
           <span class="hint-inline" id="set-panel-widths">—</span>

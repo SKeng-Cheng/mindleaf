@@ -1,6 +1,6 @@
-English | [简体中文](README.md)
-
 # Mindleaf
+
+[简体中文](README.md) · **English**
 
 > Still adding nodes to your mind map one at a time?
 > Still asking an AI for a mermaid block, pasting it back, fixing the indentation, and starting over
@@ -33,18 +33,9 @@ I copy-paste it in".
 
 # Running it
 
-**Node.js 20 or newer**, no dependencies to install. Three ways in:
+**Node.js 20 or newer**, no dependencies to install. Two ways in:
 
-**1. npm (the short path)**
-
-```bash
-npm i -g mindleaf
-mm serve --open
-```
-
-You get `mindleaf` and the short alias `mm`. Without installing: `npx mindleaf serve --open`.
-
-**2. Clone the full repo (if you want to read or change the code)**
+**1. Clone the full repo (if you want to read or change the code)**
 
 ```bash
 git clone https://github.com/SKeng-Cheng/mindleaf.git
@@ -52,7 +43,7 @@ cd mindleaf
 node bin/mindleaf.mjs serve --open
 ```
 
-**3. Clone only the minimal package (if you just want to use it)**
+**2. Clone only the minimal package (if you just want to use it)**
 
 `main` is the complete version: 67 files, 2.6 MB unpacked (2.1 MB as a zip), tests, screenshots and dev
 docs included. `lite` is the minimal package that implements the functionality: 44 files, 437 KB
@@ -164,7 +155,7 @@ Both side panels adapt to how you work, and the settings are remembered:
 
 This is the main reason the tool exists.
 
-Once MCP is connected, the AI has 18 tools. The usual sequence is:
+Once MCP is connected, the AI has 19 tools. The usual sequence is:
 
 ```
 read_map  →  apply_ops  →  export_map
@@ -183,7 +174,43 @@ summary, and `recent_changes` tells the AI which nodes you just touched.
 And you won't get overwritten: when the AI writes, your open page says "modified externally" — it
 merges silently if you're idle, and waits for you to click if you're typing.
 
-## 3. Tags: sort the maps, find them fast
+## 3. Annotations: tell the AI what to change, right on the node
+
+Halfway through reviewing a map you think "this should be two nodes instead of three". Before, you'd
+switch to the chat and explain which node you meant. Now you write it on the node:
+
+select the node → the "批注" (annotation) box sits under the note in the right panel → type what you
+want the AI to do. Annotated nodes get a small orange dot on the canvas and a ⚑ in the outline, so you
+can see at a glance what's still open.
+
+On the agent side:
+
+- `read_map` starts with "N annotations waiting" and marks each one `⚑ 批注:` in the outline
+- `list_annotations` lists every pending annotation across maps, with node ids
+- after following an annotation, the agent clears `annotation` and leaves a line in the node's note
+
+```bash
+mm annotations                                   # everything still open
+mm set "Project plan" "Chapter 3" --annotation "split into two: overview, implementation"
+mm set "Project plan" "Chapter 3" --annotation ""   # clear once handled
+```
+
+Annotations live in the file, so they survive switching machines or AIs.
+
+## 4. Hover to read the note
+
+The canvas only shows node titles; the details live in the note. Rest the mouse on a node and the note
+pops up next to the cursor:
+
+![Hovering a node shows its note](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/note-tooltip.png)
+
+- The delay is yours to pick: Settings → Interface → note tooltip, off / 0.5 / 1 / 1.5 / 2 / 3 seconds
+  (default 1.5)
+- Nodes without a note stay quiet; the popup shows the note verbatim, newlines included
+- Its font size matches the side panels — make those bigger and the popup grows too
+- Dragging, zooming and panning don't trigger it, so it never gets in the way
+
+## 5. Tags: sort the maps, find them fast
 
 Once you have more than a handful of maps, a flat list stops working. So each map can carry a few
 tags. The top of the sidebar lists every tag with its count — click one to see just that group.
@@ -198,7 +225,7 @@ mm tag "Project plan"                            # show current tags
 mm list --tag work                               # only maps with that tag
 ```
 
-## 4. Outline sidebar: see the whole structure
+## 6. Outline sidebar: see the whole structure
 
 The canvas is for working on details. To read the shape of a big map, an indented list is faster.
 Switch the sidebar to "大纲" (outline) and you get exactly that:
@@ -210,7 +237,7 @@ Switch the sidebar to "大纲" (outline) and you get exactly that:
 - A small dot marks nodes that have a note;
 - The search box filters the outline, expanding just the branches that match.
 
-## 5. Nodes can link to files, URLs, and code
+## 7. Nodes can link to files, URLs, and code
 
 | Kind | How to write it | What opens |
 | --- | --- | --- |
@@ -223,7 +250,7 @@ also a "show in Finder" button (Explorer on Windows) next to the preview.
 
 ![An exported map; the small dots mean the node has links](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/example-export.png)
 
-## 6. Ten templates that are actually useful
+## 8. Ten templates that are actually useful
 
 When creating a map you can start from a template. There are ones for papers, and ones for projects,
 meetings and weekly planning:
@@ -246,7 +273,7 @@ meetings and weekly planning:
 Templates are Markdown files under `templates/`: heading levels become the tree, list items become node
 notes. To add one, drop a `.md` file in.
 
-## 7. Export: PNG / JPG / PDF / SVG / Markdown / JSON / HTML
+## 9. Export: PNG / JPG / PDF / SVG / Markdown / JSON / HTML
 
 ```bash
 mm export "Project plan" -f pdf              # writes to exports/
@@ -267,7 +294,7 @@ mm export "Project plan" -f png --scale 2 -o ~/Desktop/plan.png
 `mm doctor` reports what's available on this machine. If nothing is, PNG and JPG export still work —
 the in-browser one is drawn by the browser.
 
-## 8. Dark mode, narrow windows, and small things
+## 10. Dark mode, narrow windows, and small things
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/ui-dark.png" alt="Dark theme with the split layout" width="49%">
@@ -294,11 +321,12 @@ without it, the tool walks up looking for `mindleaf.json`.
 | `mm show <map> [--json\|--md]` | Show a map (outline with node ids by default) |
 | `mm new <title> [--template id] [--tags a,b]` | Create a map |
 | `mm add <map> <text> [--parent node]` | Add a node; parent can be an id or its text |
-| `mm set <map> <node> ...` | Edit a node: `--text` `--note` `--color` `--text-color` `--line-color` `--font-size` `--font` `--width` `--height` `--link` `--parent` `--subtree` |
+| `mm set <map> <node> ...` | Edit a node: `--text` `--note` `--annotation` `--color` `--text-color` `--line-color` `--font-size` `--font` `--width` `--height` `--link` `--parent` `--subtree` |
 | `mm rm <map> <node>` | Delete a node and its subtree |
 | `mm mv <map> <node> <new parent>` | Move a node |
 | `mm edge <map> <from> <to> [--label]` | Add a cross-branch relation |
 | `mm tag <map> [--add a,b] [--remove c] [--set x,y] [--clear]` | Manage tags |
+| `mm annotations [map]` | List pending annotations |
 | `mm import <map\|new> <file.md>` | Import a Markdown outline |
 | `mm export <map> -f png\|jpg\|pdf\|svg\|md\|json\|html` | Export |
 | `mm log <map> [--since rev]` | Who changed what, and when |
@@ -319,7 +347,8 @@ mm import new outline.md
 mm log "My Thesis"
 ```
 
-`mm <command> --help` has the full list.
+`mm` in the examples is shorthand for `node bin/mindleaf.mjs` inside the project; add an alias if you
+want the short form: `alias mm="node $(pwd)/bin/mindleaf.mjs"`. `mm <command> --help` has the full list.
 
 # Connecting an AI
 
@@ -329,9 +358,9 @@ MCP over standard stdio. DSH, Codex, Claude Code and Claude Desktop all work:
 node bin/mindleaf.mjs mcp --project "/path/to/project"
 ```
 
-The 18 tools on the agent side: `list_maps` `list_tags` `list_fonts` `list_templates` `create_map`
+The 19 tools on the agent side: `list_maps` `list_tags` `list_fonts` `list_templates` `create_map`
 `read_map` `add_node` `update_node` `remove_node` `move_node` `apply_ops` `add_edge` `update_map`
-`export_map` `import_markdown` `recent_changes` `open_in_browser` `doctor`.
+`list_annotations` `export_map` `import_markdown` `recent_changes` `open_in_browser` `doctor`.
 
 The config can be written for you, or just printed so you can paste it:
 
@@ -466,8 +495,8 @@ examples/               a sample map
 
 **Port already in use?** `mm serve --port 7800`; without a port it picks the next free one.
 
-**`command not found: mm`?** npm's global bin directory is probably not on `PATH` — check
-`npm prefix -g`.
+**`command not found: mm`?** It isn't installed globally — add the alias above, or use
+`node bin/mindleaf.mjs` directly.
 
 **Chinese isn't selectable in the exported PDF?** That means no Chrome/Edge was found, so the PDF fell
 back to a full-page image (readable and printable, but the text can't be selected). Install a
@@ -484,8 +513,7 @@ JSON files.
 
 **Safari / Firefox?** Haven't tried them; only Chrome and Edge.
 
-**How do I uninstall?** `npm uninstall -g mindleaf`, or delete the cloned directory. Your maps in
-`maps/` are untouched.
+**How do I uninstall?** Delete the cloned directory. Your maps in `maps/` are untouched.
 
 # Known issues
 

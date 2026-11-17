@@ -102,6 +102,14 @@ export function renderSvg(layout, options = {}) {
         `<text x="${num(node.x + node.width / 2)}" y="${num(y)}" text-anchor="middle" font-size="${num(node.fontSize)}" font-family="${esc(family)}" font-weight="${weight}" fill="${ink}">${esc(line)}</text>`,
       );
     });
+    if (node.hasAnnotation) {
+      // 批注标记：左上角一个橙色小圆点，白描边，导出的图里也有
+      const cx = node.x + 7 * layout.scale;
+      const cy = node.y + 7 * layout.scale;
+      out.push(
+        `<circle data-annotation="1" cx="${num(cx)}" cy="${num(cy)}" r="${num(4.2 * layout.scale)}" fill="${palette.relation}" stroke="${palette.canvas}" stroke-width="${num(1.6 * layout.scale)}"/>`,
+      );
+    }
     if (linkBadges && node.links.length) {
       const dotY = node.y + node.height / 2;
       node.links.slice(0, 3).forEach((link, index) => {

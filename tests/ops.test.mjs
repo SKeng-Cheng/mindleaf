@@ -107,6 +107,18 @@ test('updateNode 的 subtree 模式把颜色套到整棵子树', () => {
   assert.throws(() => updateNode(doc, { id: a.id, subtree: true }), /至少要给一个颜色/);
 });
 
+test('updateNode 支持批注，传空串可以清掉', () => {
+  const { doc, a } = base();
+  updateNode(doc, { id: a.id, annotation: '改成两个节点' });
+  assert.equal(getNode(doc, a.id).annotation, '改成两个节点');
+  updateNode(doc, { id: a.id, annotation: '  带空格的批注  ' });
+  assert.equal(getNode(doc, a.id).annotation, '带空格的批注', '首尾空白要剪掉');
+  updateNode(doc, { id: a.id, annotation: '' });
+  assert.equal(getNode(doc, a.id).annotation, undefined, '空串等于清空');
+  // 批注只对单节点，不能整枝套用
+  assert.throws(() => updateNode(doc, { id: a.id, subtree: true, annotation: '整枝' }), /只能改颜色/);
+});
+
 test('updateNode 支持字号、字体、框宽高，空串即恢复自动', () => {
   const { doc, a } = base();
   updateNode(doc, { id: a.id, fontSize: 22, font: 'kai', boxWidth: 200, boxHeight: 80 });

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Store, StoreError, findProjectRoot } from './server/store.mjs';
-import { FONTS, outline, docStats, getNode, rootOf } from './core/doc.mjs';
+import { FONTS, annotationsOf, outline, docStats, getNode, rootOf } from './core/doc.mjs';
 import { fromMarkdown, guessTitle, toMarkdown } from './core/markdown.mjs';
 import { resolveNodeRef } from './mcp/server.mjs';
 import { EXPORT_FORMATS } from './export/exporters.mjs';
@@ -42,7 +42,8 @@ const HELP = `${c.bold('mindleaf')} —— AI 友好的本地思维导图（零�
   mm new <标题> [--template 模板] [--tags a,b]   新建导图
   mm templates                       列出内置模板
   mm add <导图> <文字> [--parent 节点] 新增节点（父节点可写 id 或文字）
-  mm set <导图> <节点> --text 新文字   修改节点（--note / 颜色 / 字号字体 / 框宽高 / --link / --subtree）
+  mm set <导图> <节点> --text 新文字   修改节点（--note / --annotation / 颜色 / 字号字体 / 框宽高 / --link / --subtree）
+  mm annotations [导图]              列出待处理的批注（不给导图就扫全部）
   mm fonts                           列出可用字体
   mm rm <导图> <节点>                 删除节点（含子树）
   mm mv <导图> <节点> <新父节点>       移动节点
@@ -90,6 +91,7 @@ const parse = (argv) => {
       width: { type: 'string' },
       height: { type: 'string' },
       'line-color': { type: 'string' },
+      annotation: { type: 'string' },
       subtree: { type: 'boolean' },
       link: { type: 'string', multiple: true },
       label: { type: 'string' },
@@ -463,6 +465,7 @@ function cmdSet(values, positionals) {
   if (values.color !== undefined) patch.color = values.color;
   if (values['text-color'] !== undefined) patch.textColor = values['text-color'];
   if (values['line-color'] !== undefined) patch.lineColor = values['line-color'];
+  if (values.annotation !== undefined) patch.annotation = values.annotation;
   if (values['font-size'] !== undefined) patch.fontSize = values['font-size'];
   if (values.font !== undefined) patch.font = values.font;
   if (values.width !== undefined) patch.boxWidth = values.width;
@@ -476,7 +479,7 @@ function cmdSet(values, positionals) {
   }
   if (!ops.length) {
     throw new StoreError(
-      '没有要修改的内容（--text / --note / 颜色 / --font-size / --font / --width / --height / --link / --parent）',
+      '没有要修改的内容（--text / --note / --annotation / 颜色 / --font-size / --font / --width / --height / --link / --parent）',
       'invalid_argument',
     );
   }
@@ -597,6 +600,26 @@ function cmdTag(values, positionals) {
   const { doc: next } = store.applyOps(map, ops, { by: 'cli' });
   const tags = next.tags ?? [];
   console.log(`${c.green('✔')} 标签已更新：${tags.length ? c.blue(tags.join('、')) : '（无）'}${c.dim(`  rev ${next.rev}`)}`);
+}
+
+function cmdAnnotations(values, positionals) {
+  const store = makeStore(values);
+  const targets = positionals[0]
+    ? [store.read(positionals[0])]
+    : store.list().map((item) => store.read(item.slug));
+  const blocks = [];
+  for (const target of targets) {
+    const items = annotationsOf(target.doc);
+    if (!items.length) continue;
+    const lines = items.map((item) => `  ${c.bold(item.id)}「${item.text}」\n    ${c.yellow('⚑')} ${item.annotation.replace(/\n/g, '\n      ')}`);
+    blocks.push(`${c.bold(target.doc.title)}${c.dim(`  (slug: ${target.slug})`)}\n${lines.join('\n')}`);
+  }
+  if (!blocks.length) {
+    console.log(c.dim(positionals[0] ? '这张图上没有待处理的批注。' : '所有导图都没有待处理的批注。'));
+    return;
+  }
+  console.log(blocks.join('\n\n'));
+  console.log(c.dim('\n处理完用 mm set <导图> <节点> --annotation "" 清掉。'));
 }
 
 function cmdFonts(values) {
@@ -789,6 +812,10 @@ export async function main(argv = process.argv.slice(2)) {
     case 'fonts':
     case 'font':
       cmdFonts(values);
+      return 0;
+    case 'annotations':
+    case 'annotation':
+      cmdAnnotations(values, positionals);
       return 0;
     case 'log':
     case 'history':

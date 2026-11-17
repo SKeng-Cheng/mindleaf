@@ -244,6 +244,33 @@ test('CLI: 后台启动 → 已在运行 → stop 收尾', async () => {
   assert.match(none.stdout, /没有在后台运行/);
 });
 
+test('CLI: 批注 —— set --annotation、annotations 列表、清空', async () => {
+  const projectDir = tempProject();
+  await run(projectDir, ['new', '批注图']);
+  await run(projectDir, ['add', '批注图', '第三章']);
+
+  const wrote = await run(projectDir, ['set', '批注图', '第三章', '--annotation', '拆成两节']);
+  assert.match(wrote.stdout, /已更新/);
+
+  // show 里能看到批注
+  const shown = await run(projectDir, ['show', '批注图']);
+  assert.match(shown.stdout, /⚑ 批注: 拆成两节/);
+
+  const listed = await run(projectDir, ['annotations']);
+  assert.match(listed.stdout, /批注图/);
+  assert.match(listed.stdout, /拆成两节/);
+  assert.match(listed.stdout, /清掉/);
+
+  // 只查一张图
+  const single = await run(projectDir, ['annotations', '批注图']);
+  assert.match(single.stdout, /拆成两节/);
+
+  // 清空
+  await run(projectDir, ['set', '批注图', '第三章', '--annotation', '']);
+  const empty = await run(projectDir, ['annotations']);
+  assert.match(empty.stdout, /没有待处理的批注/);
+});
+
 test('CLI: export 各种格式', async () => {
   const projectDir = tempProject();
   await run(projectDir, ['new', '导出测试']);

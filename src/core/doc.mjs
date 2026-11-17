@@ -34,6 +34,8 @@ export const BOX_WIDTH_MIN = 44;
 export const BOX_WIDTH_MAX = 600;
 export const BOX_HEIGHT_MIN = 24;
 export const BOX_HEIGHT_MAX = 500;
+/** 批注是写给 AI 的修改要求，允许比备注长一些。 */
+export const ANNOTATION_MAX = 4000;
 export const LAYOUTS = ['right', 'left', 'both'];
 export const LINK_KINDS = ['file', 'url', 'code'];
 
@@ -166,6 +168,12 @@ function normalizeNode(raw, index) {
   if (boxWidth) node.boxWidth = boxWidth;
   const boxHeight = clampNumber(raw.boxHeight, BOX_HEIGHT_MIN, BOX_HEIGHT_MAX);
   if (boxHeight) node.boxHeight = boxHeight;
+
+  // 批注：人类写给 AI 的修改要求，处理完由 AI 清空
+  if (typeof raw.annotation === 'string') {
+    const annotation = raw.annotation.trim().slice(0, ANNOTATION_MAX);
+    if (annotation) node.annotation = annotation;
+  }
   return node;
 }
 
@@ -420,13 +428,15 @@ export function docStats(doc) {
   let maxDepth = 0;
   for (const { depth } of eachNode(doc)) maxDepth = Math.max(maxDepth, depth);
   const collapsed = doc.nodes.filter((n) => n.collapsed).length;
-  return { nodes: doc.nodes.length, edges: doc.edges.length, maxDepth, collapsed };
+  const annotations = doc.nodes.filter((n) => n.annotation).length;
+  return { nodes: doc.nodes.length, edges: doc.edges.length, maxDepth, collapsed, annotations };
 }
 
 /** 给 AI 看的紧凑大纲。 */
 export function outline(doc, options = {}) {
   const withLinks = options.withLinks !== false;
   const withNotes = options.withNotes === true;
+  const withAnnotations = options.withAnnotations !== false;
   const withIds = options.withIds !== false;
   const lines = [];
   eachNode(doc, (node, depth) => {
@@ -437,6 +447,11 @@ export function outline(doc, options = {}) {
     if (withNotes && node.note) {
       for (const line of node.note.split('\n')) lines.push(`${indent}  ! ${line}`);
     }
+    if (withAnnotations && node.annotation) {
+      const [first, ...rest] = node.annotation.split('\n');
+      lines.push(`${indent}  ⚑ 批注: ${first}`);
+      for (const line of rest) lines.push(`${indent}    ${line}`);
+    }
     if (withLinks) {
       for (const link of node.links ?? []) {
         lines.push(`${indent}  → ${link.kind}:${link.target}${link.label ? ` (${link.label})` : ''}`);
@@ -444,6 +459,14 @@ export function outline(doc, options = {}) {
     }
   });
   return lines.join('\n');
+}
+
+/** 所有带批注的节点（AI 接手时先看这个），按树的顺序返回。 */
+export function annotationsOf(doc) {
+  return eachNode(doc)
+    .map((item) => item.node)
+    .filter((node) => node.annotation)
+    .map((node) => ({ id: node.id, text: node.text, annotation: node.annotation }));
 }
 
 /** 校验但不修复；返回问题列表（空数组 = 没问题）。 */

@@ -3,6 +3,7 @@
  * 每个 op 都是纯函数 + 显式参数，便于测试，也让 AI 容易预测结果。
  */
 import {
+  ANNOTATION_MAX,
   BOX_HEIGHT_MAX,
   BOX_HEIGHT_MIN,
   BOX_WIDTH_MAX,
@@ -149,6 +150,12 @@ export function updateNode(doc, patch = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'note')) node.note = String(patch.note ?? '');
   if (Object.prototype.hasOwnProperty.call(patch, 'collapsed')) node.collapsed = patch.collapsed === true;
+  // 批注：人类写给 AI 的修改要求；传空串表示"已处理完，清掉"
+  if (Object.prototype.hasOwnProperty.call(patch, 'annotation')) {
+    const annotation = typeof patch.annotation === 'string' ? patch.annotation.trim().slice(0, ANNOTATION_MAX) : '';
+    if (annotation) node.annotation = annotation;
+    else delete node.annotation;
+  }
   applyStyle(node, patch);
   if (Object.prototype.hasOwnProperty.call(patch, 'boxWidth')) {
     setNumberField(node, 'boxWidth', patch.boxWidth, BOX_WIDTH_MIN, BOX_WIDTH_MAX);

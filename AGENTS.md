@@ -27,9 +27,10 @@
 | `create_map` | 新建（可指定 `template`） |
 | `read_map` | 读：默认 outline（带节点 id），也可 `json` / `markdown` |
 | `apply_ops` | **改多个点就用它**，一批 op 原子生效 |
-| `add_node` / `update_node` / `remove_node` / `move_node` / `add_edge` | 单点修改；`update_node` 支持 `color` / `textColor` / `lineColor` / `fontSize` / `font` / `boxWidth` / `boxHeight` |
+| `add_node` / `update_node` / `remove_node` / `move_node` / `add_edge` | 单点修改；`update_node` 支持 `color` / `textColor` / `lineColor` / `fontSize` / `font` / `boxWidth` / `boxHeight` / `annotation` |
 | `update_map` | 改标题 / 布局 / 主题 / 标签（`tags`） |
 | `list_tags` | 看所有标签及各自数量 |
+| `list_annotations` | **看人类给这个节点留的批注（修改要求）**，不给 map 就扫全部 |
 | `list_fonts` | 看可用字体键名（系统字体，配色用） |
 | `export_map` | 导出 png / jpg / pdf / svg / md / json / html |
 | `import_markdown` | 用 Markdown 大纲建图或覆盖 |
@@ -49,15 +50,19 @@ $MM list --tag 项目                 # 按标签筛
 $MM export 项目规划 -f png         # 默认写到 exports/
 $MM serve --detach --open          # 后台起网页（关掉终端也不停，网页全关后自动退出）
 $MM stop                           # 关掉后台服务
+$MM annotations                    # 看有没有人类留的批注要处理
 ```
 
 ## 改图的三条规矩
 
 1. **先读再改**。`read_map` 拿到 `〔node_id〕`，之后一律用 id 操作，不要靠文字猜（文字重名会报 `ambiguous`）。
 2. **一批改动用 `apply_ops`**。它是原子的：要么全成功，要么整批不生效，不会留下半成品结构。
-3. **标签是图级别的**（`doc.tags`），不是节点级别。给图分类用 `update_map` 的 `tags`，
+3. **批注是人类的指令，必须照做**。节点上的 `annotation` 是"这里要怎么改"，
+   `read_map` 会用 `⚑ 批注:` 标出来，`list_annotations` 能一次列全。
+   改完之后把这个节点的 `annotation` 置空（`update_node` 传 `""`），并在 `note` 里留一句改了什么。
+4. **标签是图级别的**（`doc.tags`），不是节点级别。给图分类用 `update_map` 的 `tags`，
    找图用 `list_maps` 的 `tag`；不要为了分类去建一层"标签节点"。
-4. **改完看 rev**。每次写入 `rev + 1`，并往 `journal` 追加一条（谁、什么时候、改了什么摘要）。
+5. **改完看 rev**。每次写入 `rev + 1`，并往 `journal` 追加一条（谁、什么时候、改了什么摘要）。
    人类在网页里的修改同样会 +1 —— 所以下次接手前先 `recent_changes`，能知道人类动过哪里。
 
 ## 文件格式（别手写整份文件，除非你确定）
@@ -75,7 +80,8 @@ $MM stop                           # 关掉后台服务
     { "id": "root", "parent": null, "text": "根", "note": "", "order": 0, "collapsed": false, "links": [] },
     { "id": "n_1", "parent": "root", "text": "第一步：梳理现状", "order": 0,
       "color": "#fecdd3", "textColor": "#b91c1c", "lineColor": "#0ea5e9",
-      "fontSize": 18, "font": "kai", "boxWidth": 220, "links": [
+      "fontSize": 18, "font": "kai", "boxWidth": 220,
+      "annotation": "把这一节拆成两个节点", "links": [
       { "kind": "file", "target": "docs/architecture.md", "label": "架构说明" },
       { "kind": "url",  "target": "https://arxiv.org" },
       { "kind": "code", "target": "src/core/doc.mjs#L10-L20" }
@@ -91,6 +97,8 @@ $MM stop                           # 关掉后台服务
 - `nodes` 是扁平数组 + `parent` 指针，**只有一个根**（`parent: null`）。
 - `order` 决定同级顺序；插入后不用手排，op 会重排。
 - `links[].kind`：`file`（工作区文件，相对路径以项目根的 `workspaceDir` 为准）、`url`、`code`（可带 `#L10-L20` 行号）。
+- `annotation` 是人类写给 agent 的修改要求；处理完要清空。`note` 是人给自己看的备注。
+
 - `edges` 是跨分支的关联线（虚线箭头），不参与树结构。
 - 读到不合法的文件也不要慌：`normalizeDoc` 会自动修复孤儿、环、重复 id、多根。
 

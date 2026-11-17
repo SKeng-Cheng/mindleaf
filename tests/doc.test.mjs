@@ -5,6 +5,8 @@ import {
   normalizeDoc,
   normalizeTags,
   normalizeHexColor,
+  annotationsOf,
+  ANNOTATION_MAX,
   tagsToText,
   FONTS,
   FONT_KEYS,
@@ -27,6 +29,7 @@ import {
   childrenOf,
   SCHEMA_VERSION,
 } from '../src/core/doc.mjs';
+import { addNode, updateNode } from '../src/core/ops.mjs';
 
 test('createDoc 生成合法文档', () => {
   const doc = createDoc({ title: '论文', rootText: '根' });
@@ -115,7 +118,7 @@ test('遍历与统计', () => {
   assert.equal(isDescendant(doc, 'root', 'a1'), true);
   assert.equal(isDescendant(doc, 'a1', 'root'), false);
   assert.equal(rootOf(doc).id, 'root');
-  assert.deepEqual(docStats(doc), { nodes: 4, edges: 0, maxDepth: 2, collapsed: 1 });
+  assert.deepEqual(docStats(doc), { nodes: 4, edges: 0, maxDepth: 2, collapsed: 1, annotations: 0 });
 });
 
 test('outline 带 id 与链接', () => {
@@ -207,6 +210,41 @@ test('字号、字体、框宽高都会被归一化并夹到合法范围内', ()
   assert.equal(a.font, undefined, '未知字体丢掉');
   assert.equal(b.fontSize, undefined, '非数字丢掉');
   assert.equal(b.boxWidth, undefined);
+});
+
+test('批注会归一化：去首尾空白、超长截断、空串丢弃', () => {
+  const doc = normalizeDoc({
+    nodes: [
+      { id: 'root', parent: null, text: 'r', annotation: '  把三个子节点合并成两个  ' },
+      { id: 'a', parent: 'root', text: 'a', annotation: '   ' },
+      { id: 'b', parent: 'root', text: 'b', annotation: 'x'.repeat(ANNOTATION_MAX + 100) },
+      { id: 'c', parent: 'root', text: 'c' },
+    ],
+  });
+  assert.equal(doc.nodes[0].annotation, '把三个子节点合并成两个');
+  assert.equal(doc.nodes[1].annotation, undefined, '纯空白等于没有批注');
+  assert.equal(doc.nodes[2].annotation.length, ANNOTATION_MAX, '超长要截断');
+  assert.equal(doc.nodes[3].annotation, undefined);
+  assert.equal(docStats(doc).annotations, 2);
+});
+
+test('outline 会带出批注，annotationsOf 按树的顺序返回', () => {
+  const doc = createDoc({ title: 't', rootText: '根' });
+  const a = addNode(doc, { parent: 'root', text: 'A' });
+  const a1 = addNode(doc, { parent: a.id, text: 'A1' });
+  updateNode(doc, { id: a.id, annotation: '第一行要求\n第二行要求' });
+  updateNode(doc, { id: a1.id, annotation: '子节点也要改' });
+
+  const text = outline(doc);
+  assert.match(text, /⚑ 批注: 第一行要求/);
+  assert.match(text, /第二行要求/);
+  assert.match(text, /⚑ 批注: 子节点也要改/);
+  assert.match(outline(doc, { withAnnotations: false }), /^[\s\S]*$/, '可以关掉');
+  assert.ok(!outline(doc, { withAnnotations: false }).includes('⚑'), 'withAnnotations: false 不显示');
+
+  const list = annotationsOf(doc);
+  assert.deepEqual(list.map((item) => item.id), [a.id, a1.id], '按树的先序排列');
+  assert.equal(list[0].text, 'A');
 });
 
 test('recordChange 递增 rev 并裁剪 journal', () => {

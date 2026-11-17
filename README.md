@@ -1,5 +1,7 @@
 # Mindleaf
 
+**简体中文** · [English](README.en.md)
+
 > 你还在一个节点一个节点手搓思维导图吗？
 > 你还在让 AI 吐一段 mermaid 代码，然后自己复制出来、调缩进、发现中文错位又重来一遍吗？
 > 现在有 AI 了哈哈哈哈。
@@ -25,18 +27,9 @@
 
 # 跑起来
 
-需要 **Node.js 20 或更新**，不用装任何依赖。三种方式挑一种：
+需要 **Node.js 20 或更新**，不用装任何依赖。两种方式挑一种：
 
-**1. npm 全局安装（最省事）**
-
-```bash
-npm i -g mindleaf
-mm serve --open
-```
-
-装完能用 `mindleaf`，也能用短名 `mm`。不想装：`npx mindleaf serve --open`。
-
-**2. clone 完整版（想读代码 / 想改的时候）**
+**1. clone 完整版（想读代码 / 想改的时候）**
 
 ```bash
 git clone https://github.com/SKeng-Cheng/mindleaf.git
@@ -44,7 +37,7 @@ cd mindleaf
 node bin/mindleaf.mjs serve --open
 ```
 
-**3. 只拉最小版（只是拿来用）**
+**2. 只拉最小版（只是拿来用）**
 
 `main` 是完整版：67 个文件，解压后 2.6 MB（zip 2.1 MB），含测试、截图和开发文档。
 `lite` 是实现功能的最小包：44 个文件，解压后 437 KB（zip 146 KB），只保留跑起来需要的代码和模板。
@@ -151,7 +144,7 @@ mm export 项目规划 -f png                     # 导出
 
 这是写这个工具最主要的原因。
 
-接上 MCP 之后，AI 那边有 18 个工具，典型用法是：
+接上 MCP 之后，AI 那边有 19 个工具，典型用法是：
 
 ```
 read_map  →  apply_ops  →  export_map
@@ -167,7 +160,40 @@ read_map  →  apply_ops  →  export_map
 
 你也不用担心被覆盖：AI 改完之后，你开着的网页会提示"外部修改"，你手头没事就自动合并，正在打字就等你点一下。
 
-## 三、标签：给图分类，找起来快
+## 三、批注：直接告诉 AI 这里怎么改
+
+看图的时候经常会冒出一句"这块应该拆成两个"。以前得切到 AI 对话框里描述半天"第 3 章下面那个节点"，
+现在直接在节点上写：
+
+选中节点 → 右侧面板「备注」下面就是「批注」，写成你想让 AI 做什么，比如"把这三个子节点合并成两个"。
+带批注的节点左上角有个**橙色小点**，大纲里也会标一个 ⚑，一眼能看出哪里还没处理。
+
+AI 那边是这样接的：
+
+- `read_map` 的顶部会先提示"有 N 条批注等你处理"，outline 里用 `⚑ 批注:` 标出原文
+- `list_annotations` 一次列出所有图里待处理的批注（带节点 id）
+- AI 按批注改完之后，把该节点的 `annotation` 置空，并在备注里写一句改了什么
+
+```bash
+mm annotations                 # 看所有待处理的批注
+mm set 项目规划 第三章 --annotation "拆成两节：方法总览、具体实现"
+mm set 项目规划 第三章 --annotation ""     # 处理完清掉
+```
+
+批注会跟着文件走，所以换电脑、换 AI 都还在。
+
+## 四、悬停看备注
+
+画布上只能看到节点标题，详细信息（备注）藏在右侧面板里。鼠标在节点上停一会儿，备注就直接浮在鼠标旁边：
+
+![鼠标停在节点上，备注浮在旁边](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/note-tooltip.png)
+
+- 停留多久由你定：设置 → 界面 → 备注悬停提示，可以选关闭 / 0.5 / 1 / 1.5 / 2 / 3 秒（默认 1.5 秒）
+- 没有备注的节点不弹，弹出来的是备注原文（保留换行）
+- 字号跟左右两栏一致，你把侧栏字号调大了，它也跟着变大
+- 拖动、缩放、平移的时候不会弹，免得挡手
+
+## 五、标签：给图分类，找起来快
 
 图一多就乱。所以每张图可以打几个标签，侧栏顶部会列出所有标签和各自的数量，点一下只看那一类。
 
@@ -181,7 +207,7 @@ mm tag 项目规划                       # 看当前标签
 mm list --tag 项目                    # 只看带这个标签的图
 ```
 
-## 四、大纲侧栏：大图也能看清结构
+## 六、大纲侧栏：大图也能看清结构
 
 画布适合想细节，但要通览整棵树的层级，还是列表更直观。侧栏切到「大纲」，就是一棵缩进的树：
 
@@ -192,7 +218,7 @@ mm list --tag 项目                    # 只看带这个标签的图
 - 带备注的节点后面有个小圆点；
 - 顶部搜索框能在大纲里找节点，命中会自动展开到那一层。
 
-## 五、节点能挂链接：文件、网页、代码
+## 七、节点能挂链接：文件、网页、代码
 
 | 类型 | 写法 | 点开之后 |
 | --- | --- | --- |
@@ -205,7 +231,7 @@ mm list --tag 项目                    # 只看带这个标签的图
 
 ![导出的图，节点右上角的小圆点表示挂了链接](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/example-export.png)
 
-## 六、十个开箱能用的模板
+## 八、十个开箱能用的模板
 
 新建的时候可以直接选模板。论文提纲、研究计划、文献综述这些有，做项目、开会、排周计划也有：
 
@@ -227,7 +253,7 @@ mm list --tag 项目                    # 只看带这个标签的图
 模板就是 `templates/` 下的 Markdown 文件，标题层级对应树的层级，列表项变成节点备注。
 想加自己的，丢一个 `.md` 进去就行。
 
-## 七、导出：PNG / JPG / PDF / SVG / Markdown / JSON / HTML
+## 九、导出：PNG / JPG / PDF / SVG / Markdown / JSON / HTML
 
 ```bash
 mm export 项目规划 -f pdf              # 默认写到 exports/
@@ -247,7 +273,7 @@ mm export 项目规划 -f png --scale 2 -o ~/Desktop/项目规划.png
 
 `mm doctor` 会告诉你能用哪些能力。一个都没有也不影响正常用 —— 网页里导 PNG/JPG 是浏览器自己画的。
 
-## 八、深色、窄屏、还有一堆小地方
+## 十、深色、窄屏、还有一堆小地方
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/ui-dark.png" alt="深色主题和双侧布局" width="49%">
@@ -273,11 +299,12 @@ mm export 项目规划 -f png --scale 2 -o ~/Desktop/项目规划.png
 | `mm show <导图> [--json\|--md]` | 看导图（默认带节点 id） |
 | `mm new <标题> [--template 模板] [--tags a,b]` | 新建导图 |
 | `mm add <导图> <文字> [--parent 节点]` | 加节点，父节点写 id 或文字 |
-| `mm set <导图> <节点> ...` | 改节点：`--text` `--note` `--color` `--text-color` `--line-color` `--font-size` `--font` `--width` `--height` `--link` `--parent` `--subtree` |
+| `mm set <导图> <节点> ...` | 改节点：`--text` `--note` `--annotation` `--color` `--text-color` `--line-color` `--font-size` `--font` `--width` `--height` `--link` `--parent` `--subtree` |
 | `mm rm <导图> <节点>` | 删除节点（含子树） |
 | `mm mv <导图> <节点> <新父节点>` | 移动节点 |
 | `mm edge <导图> <起点> <终点> [--label]` | 加跨分支关联线 |
 | `mm tag <导图> [--add a,b] [--remove c] [--set x,y] [--clear]` | 管理标签 |
+| `mm annotations [导图]` | 列出待处理的批注 |
 | `mm import <导图\|new> <文件.md>` | 从 Markdown 导入 |
 | `mm export <导图> -f png\|jpg\|pdf\|svg\|md\|json\|html` | 导出 |
 | `mm log <导图> [--since rev]` | 看谁在什么时候改了什么 |
@@ -298,7 +325,8 @@ mm import new 综述大纲.md
 mm log 毕业论文
 ```
 
-`mm <命令> --help` 看完整参数。
+上面的 `mm` 是简写，实际就是项目目录里的 `node bin/mindleaf.mjs`；想直接敲 `mm` 可以加个别名：
+`alias mm="node $(pwd)/bin/mindleaf.mjs"`。`mm <命令> --help` 看完整参数。
 
 # 接入 AI
 
@@ -308,8 +336,8 @@ MCP 走标准 stdio 协议，DSH、Codex、Claude Code、Claude Desktop 都能�
 node bin/mindleaf.mjs mcp --project "/path/to/项目"
 ```
 
-AI 那边的 18 个工具：`list_maps` `list_tags` `list_fonts` `list_templates` `create_map` `read_map`
-`add_node` `update_node` `remove_node` `move_node` `apply_ops` `add_edge` `update_map` `export_map`
+AI 那边的 19 个工具：`list_maps` `list_tags` `list_fonts` `list_templates` `create_map` `read_map`
+`add_node` `update_node` `remove_node` `move_node` `apply_ops` `add_edge` `update_map` `list_annotations` `export_map`
 `import_markdown` `recent_changes` `open_in_browser` `doctor`。
 
 配置可以自动写，也可以只打印出来自己贴：
@@ -441,7 +469,7 @@ examples/               示例导图
 
 **端口被占用了？** `mm serve --port 7800`；不加端口它会自动往后找空号。
 
-**`command not found: mm`？** 全局安装后 npm 的全局 bin 目录可能不在 PATH 里，查一下 `npm prefix -g`。
+**`command not found: mm`？** 这个命令不是全局安装的，按上面加个 alias，或者直接用 `node bin/mindleaf.mjs`。
 
 **导出的 PDF 里中文选不中？** 说明本机没有 Chrome / Edge，PDF 退化成了整页图片（能看能打印，
 但文字不可选）。装个 Chromium 系浏览器再导一次就是矢量的。
@@ -452,7 +480,7 @@ examples/               示例导图
 
 **只想清掉工具、保留导图？** 删掉代码目录即可，`maps/` 里是独立 JSON 文件。
 
-**怎么卸载？** `npm uninstall -g mindleaf`，或者删掉 clone 下来的目录。导图数据在 `maps/`，不会被动。
+**怎么卸载？** 删掉 clone 下来的目录即可。导图数据在 `maps/`，不会被动。
 
 # 已知的问题
 

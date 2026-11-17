@@ -331,6 +331,30 @@ test('renderSvg 使用自定义的模块/字体/连线颜色', () => {
   void child;
 });
 
+test('有批注的节点在布局里打标记，SVG 里画一个橙色小点', () => {
+  const doc = createDoc({ title: '批注', rootText: '根' });
+  const plain = addNode(doc, { parent: 'root', text: '普通节点' });
+  const annotated = addNode(doc, { parent: 'root', text: '要改的节点' });
+  updateNode(doc, { id: annotated.id, annotation: '拆成两个' });
+
+  const layout = layoutDoc(doc);
+  const byId = (id) => layout.nodes.find((item) => item.id === id);
+  assert.equal(byId(annotated.id).hasAnnotation, true);
+  assert.equal(byId(plain.id).hasAnnotation, false);
+
+  const svg = docToSvg(doc);
+  assert.equal((svg.match(/data-annotation="1"/g) ?? []).length, 1, '有批注的节点应各有一个标记');
+  // 标记在节点内部左上角
+  const mark = /<circle data-annotation="1" cx="([\d.]+)" cy="([\d.]+)"/.exec(svg);
+  const nodeX = Number(/<g data-node-id="[^"]+"[^>]*>\s*<rect x="([\d.]+)"/.exec(svg)?.[1] ?? 0);
+  assert.ok(mark, '应能取到标记坐标');
+  // 清空后不再画
+  updateNode(doc, { id: annotated.id, annotation: '' });
+  const clean = docToSvg(doc);
+  assert.equal((clean.match(/data-annotation="1"/g) ?? []).length, 0, '清空批注后不应再有标记');
+  void nodeX;
+});
+
 test('renderSvg 每个节点用自己的字体和字号', () => {
   const doc = createDoc({ title: '字体', rootText: '根' });
   const a = addNode(doc, { parent: 'root', text: '楷体节点' });
