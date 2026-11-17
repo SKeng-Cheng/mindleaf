@@ -6,6 +6,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Store, StoreError, findProjectRoot } from './server/store.mjs';
 import { FONTS, outline, docStats, getNode, rootOf } from './core/doc.mjs';
@@ -13,6 +14,9 @@ import { fromMarkdown, guessTitle, toMarkdown } from './core/markdown.mjs';
 import { resolveNodeRef } from './mcp/server.mjs';
 import { EXPORT_FORMATS } from './export/exporters.mjs';
 import { detectEngines, openInBrowser } from './export/raster.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, '..');
 
 const isTTY = process.stdout.isTTY;
 const c = {
@@ -29,6 +33,9 @@ const HELP = `${c.bold('mindleaf')} —— AI 友好的本地思维导图（零�
 用法: mm <命令> [选项]
 常用:
   mm serve [--port 7788] [--open]     启动网页（人机共用同一份文件）
+  mm serve --open                     前台启动；网页全关后自动退出（--no-exit-when-closed 保持常驻）
+  mm serve --detach [--open]          后台启动：关掉终端也不停，网页全关后自己退出
+  mm stop                             关闭后台服务
   mm list [--tag 标签]               列出全部导图（可按标签过滤）
   mm tag <导图> [--add a,b] [--remove c] [--set x,y] [--clear]   管理标签
   mm show <导图> [--json|--md]        查看导图（默认带 id 的大纲）
@@ -62,6 +69,11 @@ const parse = (argv) => {
       port: { type: 'string' },
       open: { type: 'boolean' },
       host: { type: 'string' },
+      detach: { type: 'boolean' },
+      'detached-child': { type: 'boolean' },
+      'exit-when-closed': { type: 'boolean' },
+      'no-exit-when-closed': { type: 'boolean' },
+      'idle-timeout': { type: 'string' },
       json: { type: 'boolean' },
       md: { type: 'boolean' },
       markdown: { type: 'boolean' },
@@ -167,23 +179,208 @@ const pad = (text, width) => {
   return value + ' '.repeat(Math.max(0, width - displayWidth(value)));
 };
 
+/** 后台服务的状态文件：记 pid / 端口 / url，`mm stop` 靠它找到进程。 */
+function serverStateFile(projectDir) {
+  return path.join(projectDir, '.mindleaf', 'server.json');
+}
+
+function readServerState(projectDir) {
+  try {
+    const state = JSON.parse(fs.readFileSync(serverStateFile(projectDir), 'utf8'));
+    return Number.isInteger(state?.pid) ? state : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeServerState(projectDir, state) {
+  const file = serverStateFile(projectDir);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(state, null, 2) + '\n');
+}
+
+function clearServerState(projectDir) {
+  try {
+    fs.rmSync(serverStateFile(projectDir), { force: true });
+  } catch {
+    /* 忽略 */
+  }
+}
+
+const isProcessAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+async function pingServer(url) {
+  try {
+    const response = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(700) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** 后台启动：父进程只负责拉起来、等它就绪，然后退出。 */
+async function serveDetached(values, positionals, store) {
+  const existing = readServerState(store.projectDir);
+  if (existing && isProcessAlive(existing.pid) && (await pingServer(existing.url))) {
+    const url = positionals[0] ? `${existing.url}/#${encodeURIComponent(positionals[0])}` : existing.url;
+    console.log(`${c.yellow('•')} Mindleaf 已经在后台运行 ${c.bold(url)}${c.dim(`  pid ${existing.pid}`)}`);
+    console.log(c.dim('  想关掉：mm stop'));
+    if (values.open) await openInBrowser(url);
+    return;
+  }
+  if (existing) clearServerState(store.projectDir);
+
+  const entry = path.join(ROOT, 'bin', 'mindleaf.mjs');
+  const args = [entry, 'serve', '--detached-child', '--project', store.projectDir];
+  if (values.port) args.push('--port', String(values.port));
+  if (values.host) args.push('--host', values.host);
+  if (values.idleTimeout) args.push('--idle-timeout', String(values.idleTimeout));
+  if (positionals[0]) args.push(positionals[0]);
+
+  const { spawn } = await import('node:child_process');
+  const child = spawn(process.execPath, args, {
+    detached: true,
+    stdio: 'ignore',
+    cwd: store.projectDir,
+  });
+  child.unref();
+
+  // 等它就绪（最多 10 秒）
+  const deadline = Date.now() + 10000;
+  let state = null;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    state = readServerState(store.projectDir);
+    if (state && state.pid === child.pid && (await pingServer(state.url))) break;
+    state = null;
+  }
+  if (!state) {
+    clearServerState(store.projectDir);
+    throw new StoreError('后台服务没能启动，试一下前台运行：mm serve --open', 'server_error');
+  }
+
+  const url = positionals[0] ? `${state.url}/#${encodeURIComponent(positionals[0])}` : state.url;
+  console.log(`${c.green('✔')} Mindleaf 已在后台启动 ${c.bold(url)}${c.dim(`  pid ${state.pid}`)}`);
+  console.log(c.dim(`  项目: ${store.projectDir}`));
+  console.log(c.dim('  关掉终端也不影响；网页全部关闭后服务会自己退出'));
+  console.log(c.dim('  想手动关掉：mm stop'));
+  if (values.open || positionals[0]) await openInBrowser(url);
+}
+
 async function cmdServe(values, positionals) {
   const store = makeStore(values);
+  if (values.detach && !values['detached-child']) {
+    await serveDetached(values, positionals, store);
+    return;
+  }
+
   const { startServer } = await import('./server/http.mjs');
-  const session = await startServer({ store, port: number(values.port, 7788), host: values.host });
+  const isChild = values['detached-child'] === true;
+  // 后台模式默认：页面全关 20 秒后退出；120 秒内没有任何页面连进来也退出（避免留下孤儿进程）
+  const idleTimeout = number(values['idle-timeout'], 20000);
+  // 前台默认也是"网页全关就退出"，想让它一直挂着用 --no-exit-when-closed
+  const exitWhenClosed = isChild || values['exit-when-closed'] === true || values['no-exit-when-closed'] !== true;
+  const session = await startServer({
+    store,
+    port: number(values.port, 7788),
+    host: values.host,
+    idleExitMs: exitWhenClosed ? idleTimeout : 0,
+    firstPageTimeoutMs: isChild ? 120000 : 0,
+  });
+
   const mapFilter = positionals[0];
   const url = mapFilter ? `${session.url}/#${encodeURIComponent(mapFilter)}` : session.url;
+
+  if (isChild) {
+    // 后台子进程：写状态文件、忽略挂断信号，把日志丢掉
+    writeServerState(store.projectDir, {
+      pid: process.pid,
+      port: session.port,
+      url: session.url,
+      projectDir: store.projectDir,
+      startedAt: new Date().toISOString(),
+    });
+    process.on('SIGHUP', () => {});
+    process.on('SIGPIPE', () => {});
+    session.exited.then(async () => {
+      clearServerState(store.projectDir);
+      await session.close();
+      process.exit(0);
+    });
+    process.on('SIGINT', () => session.close().then(() => process.exit(0)));
+    process.on('SIGTERM', () => session.close().then(() => process.exit(0)));
+    return;
+  }
+
   console.log(`${c.green('✔')} Mindleaf 已启动 ${c.bold(url)}`);
   console.log(c.dim(`  项目: ${store.projectDir}`));
   console.log(c.dim(`  导图: ${store.mapsDir}`));
   console.log(c.dim(`  浏览器能力: ${session.engines.chromium[0] ?? '未找到无头浏览器'}${session.engines.sips ? ' · sips 可用' : ''}`));
-  console.log(c.dim('  Ctrl+C 停止'));
+  console.log(
+    c.dim(exitWhenClosed ? `  Ctrl+C 停止；网页全部关闭 ${Math.round(idleTimeout / 1000)} 秒后自动退出` : '  Ctrl+C 停止'),
+  );
   if (values.open || mapFilter) await openInBrowser(url);
-  await new Promise((resolve) => {
-    process.on('SIGINT', resolve);
-    process.on('SIGTERM', resolve);
-  });
+
+  if (exitWhenClosed) {
+    await Promise.race([
+      session.exited,
+      new Promise((resolve) => {
+        process.on('SIGINT', resolve);
+        process.on('SIGTERM', resolve);
+      }),
+    ]);
+  } else {
+    await new Promise((resolve) => {
+      process.on('SIGINT', resolve);
+      process.on('SIGTERM', resolve);
+    });
+  }
   await session.close();
+}
+
+async function cmdStop(values) {
+  const store = makeStore(values);
+  const state = readServerState(store.projectDir);
+  if (!state) {
+    console.log(c.dim(`没有在后台运行的 Mindleaf（${store.projectDir}）`));
+    return;
+  }
+  const alive = isProcessAlive(state.pid);
+  // 先请它自己收尾（会关掉 SSE、清状态文件），不行再直接杀
+  if (alive) {
+    try {
+      await fetch(`${state.url}/api/shutdown`, { method: 'POST', signal: AbortSignal.timeout(1500) });
+    } catch {
+      /* 可能已经挂了，下面兜底 */
+    }
+  }
+  for (let i = 0; i < 25 && isProcessAlive(state.pid); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (isProcessAlive(state.pid)) {
+    try {
+      process.kill(state.pid, 'SIGTERM');
+    } catch {
+      /* 忽略 */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  if (isProcessAlive(state.pid)) {
+    try {
+      process.kill(state.pid, 'SIGKILL');
+    } catch {
+      /* 忽略 */
+    }
+  }
+  clearServerState(store.projectDir);
+  console.log(`${c.green('✔')} 已关闭后台服务${c.dim(`  pid ${state.pid}`)}`);
 }
 
 function cmdList(values) {
@@ -535,6 +732,10 @@ export async function main(argv = process.argv.slice(2)) {
     case 'server':
     case 'web':
       await cmdServe(values, positionals);
+      return 0;
+    case 'stop':
+    case 'shutdown':
+      await cmdStop(values);
       return 0;
     case 'open':
       await cmdOpen(values, positionals);

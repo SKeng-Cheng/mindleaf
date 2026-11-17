@@ -39,6 +39,13 @@ cd mindleaf && node bin/mindleaf.mjs serve --open
 两个分支的体量：`main` 完整版 67 个文件、解压后 2.6 MB（zip 2.1 MB）；`lite` 最小包 44 个文件、
 解压后 437 KB（zip 146 KB）。代码部分两者完全一致，lite 只是去掉了测试、截图和开发文档。
 
+### 服务生命周期
+
+- `mm serve` 默认在**网页全部关闭后**自动退出（20 秒宽限期），不留后台进程
+- `mm serve --detach` 后台运行：关掉终端也不受影响，网页全关后自己退出
+- `mm stop` 手动关闭后台服务；`--no-exit-when-closed` 让它常驻
+- macOS 双击「启动 Mindleaf.command」默认走后台模式
+
 ### 已知限制
 
 - 只在 macOS 上实际跑过；Linux / Windows 没有验证

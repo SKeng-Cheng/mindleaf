@@ -56,6 +56,20 @@ cd mindleaf && node bin/mindleaf.mjs serve --open
 
 macOS 上还可以双击仓库里的「启动 Mindleaf.command」，它会起服务并打开浏览器。
 
+## 服务什么时候关
+
+默认是**网页全部关掉后自动退出**（等 20 秒，留出刷新和重连的时间），不用管它，也不会留下后台进程。
+如果想让它一直挂着（比如当常驻服务，随时刷新都能打开），有两种办法：
+
+```bash
+mm serve --open --no-exit-when-closed   # 前台常驻
+mm serve --detach --open                # 后台运行：关掉终端也不停，网页全关后自己退出
+mm stop                                 # 手动关掉后台服务
+```
+
+`--detach` 适合双击启动或者"打开就用、用完就走"的场景：终端窗口关掉不影响服务，
+浏览器里把 Mindleaf 的标签页全关了，服务会自己收尾并把状态文件清掉。
+
 ## 第一次运行
 
 ```bash
@@ -240,7 +254,9 @@ mm export 项目规划 -f png --scale 2 -o ~/Desktop/项目规划.png
 
 | 命令 | 作用 |
 | --- | --- |
-| `mm serve [--port 7788] [--open]` | 起网页 |
+| `mm serve [--port 7788] [--open]` | 起网页（网页全关后自动退出） |
+| `mm serve --detach [--open]` | 后台运行：关掉终端也不停，网页全关后退出 |
+| `mm stop` | 关闭后台服务 |
 | `mm open [导图]` | 起网页并打开某张图 |
 | `mm list [--tag 标签]` | 列出导图，可按标签过滤 |
 | `mm show <导图> [--json\|--md]` | 看导图（默认带节点 id） |

@@ -47,6 +47,8 @@ $MM add 项目规划 "下一步：灰度发布" --parent root
 $MM tag 项目规划 --add 项目,进行中  # 打标签
 $MM list --tag 项目                 # 按标签筛
 $MM export 项目规划 -f png         # 默认写到 exports/
+$MM serve --detach --open          # 后台起网页（关掉终端也不停，网页全关后自动退出）
+$MM stop                           # 关掉后台服务
 ```
 
 ## 改图的三条规矩

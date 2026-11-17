@@ -213,6 +213,37 @@ test('CLI: 字号 / 字体 / 框宽高与 fonts 命令', async () => {
   assert.match(mixed.stderr, /只能改颜色/);
 });
 
+test('CLI: 后台启动 → 已在运行 → stop 收尾', async () => {
+  const projectDir = tempProject();
+  const stateFile = path.join(projectDir, '.mindleaf', 'server.json');
+
+  const started = await run(projectDir, ['serve', '--detach', '--port', '0']);
+  assert.match(started.stdout, /已在后台启动/, started.stdout);
+  assert.ok(fs.existsSync(stateFile), '应写出状态文件');
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.ok(Number.isInteger(state.pid) && state.pid > 0);
+  assert.ok(state.url.startsWith('http://127.0.0.1:'));
+
+  // 健康检查能通
+  const health = await fetch(`${state.url}/api/health`);
+  assert.equal(health.status, 200);
+
+  // 再启动一次：应识别为"已经在后台运行"
+  const again = await run(projectDir, ['serve', '--detach', '--port', '0']);
+  assert.match(again.stdout, /已经在后台运行/, again.stdout);
+
+  // stop
+  const stopped = await run(projectDir, ['stop']);
+  assert.match(stopped.stdout, /已关闭后台服务/);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(fs.existsSync(stateFile), false, '状态文件应被清掉');
+  await assert.rejects(fetch(`${state.url}/api/health`, { signal: AbortSignal.timeout(800) }), '服务应已停止');
+
+  // 没在跑的时候 stop 不报错
+  const none = await run(projectDir, ['stop']);
+  assert.match(none.stdout, /没有在后台运行/);
+});
+
 test('CLI: export 各种格式', async () => {
   const projectDir = tempProject();
   await run(projectDir, ['new', '导出测试']);

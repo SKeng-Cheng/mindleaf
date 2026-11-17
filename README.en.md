@@ -65,6 +65,18 @@ cd mindleaf && node bin/mindleaf.mjs serve --open
 
 On macOS you can also double-click `启动 Mindleaf.command`; it starts the server and opens a browser.
 
+## When does the server stop?
+
+By default it **exits once every page is closed** (after a 20 second grace period for reloads and
+reconnects), so no stray processes are left behind. If you'd rather keep it running:
+
+```bash
+mm serve --open --no-exit-when-closed   # stay in the foreground
+mm serve --detach --open                # run in the background: survives closing the terminal,
+                                        # exits when the last page is closed
+mm stop                                 # stop the background server
+```
+
 ## First run
 
 ```bash
@@ -261,7 +273,9 @@ without it, the tool walks up looking for `mindleaf.json`.
 
 | Command | What it does |
 | --- | --- |
-| `mm serve [--port 7788] [--open]` | Start the web app |
+| `mm serve [--port 7788] [--open]` | Start the web app (exits when all pages close) |
+| `mm serve --detach [--open]` | Run in the background: survives closing the terminal |
+| `mm stop` | Stop the background server |
 | `mm open [map]` | Start it and open a specific map |
 | `mm list [--tag tag]` | List maps, optionally filtered by tag |
 | `mm show <map> [--json\|--md]` | Show a map (outline with node ids by default) |

@@ -31,6 +31,51 @@ const setup = async () => {
   return { session, base, api, projectDir };
 };
 
+test('HTTP: 最后一个页面关掉后服务自动退出', async (t) => {
+  const projectDir = tempProject();
+  const session = await startServer({ projectDir, port: 0, host: '127.0.0.1', idleExitMs: 250 });
+  t.after(() => session.close().catch(() => {}));
+  assert.equal(session.clientCount(), 0);
+
+  // 模拟一个网页：连上 SSE
+  const response = await fetch(`${session.url}/api/events`);
+  const reader = response.body.getReader();
+  await reader.read(); // ": connected"
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.equal(session.clientCount(), 1, '页面连上后应有 1 个客户端');
+
+  // 页面还开着时不应该退出
+  assert.equal(await Promise.race([session.exited.then(() => 'exited'), new Promise((r) => setTimeout(() => r('alive'), 400))]), 'alive');
+
+  // 关掉页面（断开 SSE）→ 应在 idleExitMs 后退出
+  await reader.cancel();
+  const started = Date.now();
+  await session.exited;
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed >= 200, `应等 idleExitMs 再退出，实际 ${elapsed}ms`);
+  assert.ok(elapsed < 2000, `不应拖太久，实际 ${elapsed}ms`);
+});
+
+test('HTTP: 一直没人打开页面时也会超时退出', async (t) => {
+  const projectDir = tempProject();
+  const session = await startServer({ projectDir, port: 0, host: '127.0.0.1', firstPageTimeoutMs: 250 });
+  t.after(() => session.close().catch(() => {}));
+  const started = Date.now();
+  await session.exited;
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed >= 200 && elapsed < 2000, `应在 firstPageTimeoutMs 附近退出，实际 ${elapsed}ms`);
+});
+
+test('HTTP: /api/shutdown 能关掉服务', async (t) => {
+  const projectDir = tempProject();
+  const session = await startServer({ projectDir, port: 0, host: '127.0.0.1' });
+  t.after(() => session.close().catch(() => {}));
+  const response = await fetch(`${session.url}/api/shutdown`, { method: 'POST' });
+  assert.equal(response.status, 200);
+  await session.exited;
+  assert.ok(true, '服务已退出');
+});
+
 test('HTTP: 状态/模板/健康检查', async (t) => {
   const { session, api } = await setup();
   t.after(() => session.close());

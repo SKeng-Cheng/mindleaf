@@ -118,6 +118,7 @@ export async function createApp(options = {}) {
   store.watch();
   const engines = options.engines ?? detectEngines();
   const clients = new Set();
+  const notifyClients = () => options.onClientsChange?.(clients.size);
   const unsubscribe = store.subscribe((event) => {
     const payload = `data: ${JSON.stringify(event)}\n\n`;
     for (const client of clients) {
@@ -145,6 +146,11 @@ export async function createApp(options = {}) {
   });
 
   route('GET', /^\/api\/health$/, (req, res) => json(res, 200, { ok: true, uptime: process.uptime() }));
+  // 主动关闭服务（`mm stop` 走这里，比直接 kill 干净）
+  route('POST', /^\/api\/shutdown$/, (req, res) => {
+    json(res, 200, { ok: true, message: '正在关闭' });
+    setTimeout(() => options.onShutdownRequest?.(), 10);
+  });
   route('GET', /^\/api\/state$/, (req, res) => json(res, 200, state()));
   route('GET', /^\/api\/config$/, (req, res) => json(res, 200, { config: store.config, summary: store.summary() }));
   route('PUT', /^\/api\/config$/, async (req, res) => {
@@ -271,6 +277,7 @@ export async function createApp(options = {}) {
     });
     res.write(`: connected\n\n`);
     clients.add(res);
+    notifyClients();
     const ping = setInterval(() => {
       try {
         res.write(': ping\n\n');
@@ -281,6 +288,7 @@ export async function createApp(options = {}) {
     req.on('close', () => {
       clearInterval(ping);
       clients.delete(res);
+      notifyClients();
     });
   });
   // 文件/代码链接预览：只允许读项目目录内的文件
@@ -400,7 +408,23 @@ export async function createApp(options = {}) {
     clients.clear();
   });
 
-  return { server, store, engines, state };
+  return {
+    server,
+    store,
+    engines,
+    state,
+    clientCount: () => clients.size,
+    closeClients: () => {
+      for (const client of clients) {
+        try {
+          client.end();
+        } catch {
+          /* 忽略 */
+        }
+      }
+      clients.clear();
+    },
+  };
 }
 
 function readVersion() {
@@ -416,9 +440,74 @@ function readVersion() {
  * @param {{projectDir?:string, port?:number, host?:string, store?:Store}} options
  */
 export async function startServer(options = {}) {
-  const app = await createApp(options);
   const host = options.host ?? '127.0.0.1';
   const requested = Number.isInteger(options.port) ? options.port : 7788;
+  const idleExitMs = Number.isFinite(options.idleExitMs) ? options.idleExitMs : 0;
+  const firstPageTimeoutMs = Number.isFinite(options.firstPageTimeoutMs) ? options.firstPageTimeoutMs : 0;
+
+  let idleTimer = null;
+  let firstPageTimer = null;
+  let closed = false;
+  let sawClient = false;
+  let resolveExited = () => {};
+  /** 自动退出（页面全关）或手动关闭时 resolve */
+  const exited = new Promise((resolve) => {
+    resolveExited = resolve;
+  });
+
+  let resolveServerClosed = () => {};
+  const serverClosed = new Promise((resolve) => {
+    resolveServerClosed = resolve;
+  });
+
+  /** 收尾：不再接受连接、断开 SSE、通知等待者（可重复调用） */
+  const shutdown = () => {
+    closeHttpServer();
+    if (closed) return;
+    closed = true;
+    clearTimeout(idleTimer);
+    clearTimeout(firstPageTimer);
+    resolveExited();
+    options.onAutoExit?.();
+  };
+
+  function closeHttpServer() {
+    try {
+      app.server.close(() => resolveServerClosed());
+      app.server.closeAllConnections?.();
+    } catch {
+      resolveServerClosed();
+    }
+  }
+
+  const handleClientsChange = (count) => {
+    options.onClientsChange?.(count);
+    if (count > 0) {
+      sawClient = true;
+      clearTimeout(idleTimer);
+      clearTimeout(firstPageTimer);
+      firstPageTimer = null;
+      return;
+    }
+    // 曾经有页面连过，现在全关了 → 等一小会儿再退（留出刷新 / 重连的时间）
+    if (sawClient && idleExitMs && !closed) {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(shutdown, idleExitMs);
+    }
+  };
+
+  const app = await createApp({
+    ...options,
+    onClientsChange: handleClientsChange,
+    // /api/shutdown 走同一条收尾路径
+    onShutdownRequest: () => shutdown(),
+  });
+  if (firstPageTimeoutMs && !sawClient) {
+    firstPageTimer = setTimeout(() => {
+      if (!sawClient) shutdown();
+    }, firstPageTimeoutMs);
+  }
+
   const port = await new Promise((resolve, reject) => {
     const tryListen = (candidate, attempt = 0) => {
       const onError = (error) => {
@@ -438,15 +527,31 @@ export async function startServer(options = {}) {
   });
   const actualPort = app.server.address()?.port ?? port;
   const url = `http://${host}:${actualPort}`;
+
+  app.server.on('close', () => {
+    closed = true;
+    clearTimeout(idleTimer);
+    clearTimeout(firstPageTimer);
+    resolveServerClosed();
+  });
+
   return {
     ...app,
     host,
     port: actualPort,
     url,
-    close: () =>
-      new Promise((resolve) => {
-        app.server.close(() => resolve());
-      }),
+    /** 页面全部关闭 / 手动关闭时 resolve（detach 模式靠它退出进程） */
+    exited,
+    /** 再挂一个监听，拿到当前和后续的页面数量 */
+    onClientsChange: (listener) => {
+      options.onClientsChange = listener;
+      listener(app.clientCount());
+    },
+    close: () => {
+      shutdown();
+      app.closeClients();
+      return serverClosed;
+    },
   };
 }
 
