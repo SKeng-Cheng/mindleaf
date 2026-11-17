@@ -72,8 +72,9 @@ function buildReadme(source, baseSha) {
 
   const banner = [
     '',
-    '> **这是 lite 分支**：只保留运行需要的文件（约 400 KB），没有测试、截图和开发文档，',
-    '> 方便直接 clone 下来用。完整版（含测试、截图、英文 README、开发说明）在 `main` 分支。',
+    '> **这是 lite 分支**：实现功能的最小包，44 个文件、解压后 437 KB（zip 146 KB），',
+    '> 只保留跑起来需要的代码和模板，没有测试、截图和开发文档。',
+    '> 完整版在 `main` 分支：67 个文件、解压后 2.6 MB。',
     `> 本分支由 \`scripts/build-lite.mjs\` 从 main@${baseSha.slice(0, 7)} 自动生成，**不要直接改它**。`,
     '',
   ].join('\n');

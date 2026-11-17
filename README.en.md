@@ -52,9 +52,11 @@ cd mindleaf
 node bin/mindleaf.mjs serve --open
 ```
 
-**3. Clone only the minimal branch (if you just want to use it)**
+**3. Clone only the minimal package (if you just want to use it)**
 
-The `lite` branch drops tests, screenshots and dev docs — just over 400 KB:
+`main` is the complete version: 67 files, 2.6 MB unpacked (2.1 MB as a zip), tests, screenshots and dev
+docs included. `lite` is the minimal package that implements the functionality: 44 files, 437 KB
+unpacked (146 KB as a zip), only the code and templates needed to run it.
 
 ```bash
 git clone -b lite --depth 1 https://github.com/SKeng-Cheng/mindleaf.git

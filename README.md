@@ -46,7 +46,8 @@ node bin/mindleaf.mjs serve --open
 
 **3. 只拉最小版（只是拿来用）**
 
-`lite` 分支去掉测试、截图和开发文档，只有 400 多 KB：
+`main` 是完整版：67 个文件，解压后 2.6 MB（zip 2.1 MB），含测试、截图和开发文档。
+`lite` 是实现功能的最小包：44 个文件，解压后 437 KB（zip 146 KB），只保留跑起来需要的代码和模板。
 
 ```bash
 git clone -b lite --depth 1 https://github.com/SKeng-Cheng/mindleaf.git

@@ -31,10 +31,13 @@ npm i -g mindleaf && mm serve --open
 git clone https://github.com/SKeng-Cheng/mindleaf.git
 cd mindleaf && node bin/mindleaf.mjs serve --open
 
-# 最小版（去掉测试、截图、开发文档）
+# 最小包（实现功能所需的最少文件，437 KB）
 git clone -b lite --depth 1 https://github.com/SKeng-Cheng/mindleaf.git
 cd mindleaf && node bin/mindleaf.mjs serve --open
 ```
+
+两个分支的体量：`main` 完整版 67 个文件、解压后 2.6 MB（zip 2.1 MB）；`lite` 最小包 44 个文件、
+解压后 437 KB（zip 146 KB）。代码部分两者完全一致，lite 只是去掉了测试、截图和开发文档。
 
 ### 已知限制
 
