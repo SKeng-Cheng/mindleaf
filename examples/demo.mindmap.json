@@ -1,0 +1,537 @@
+{
+  "format": "mindmap",
+  "schemaVersion": 1,
+  "id": "mm_t7b8h9ul",
+  "title": "示例项目：订单服务重构",
+  "createdAt": "2026-11-17T04:27:09.182Z",
+  "updatedAt": "2026-11-17T05:15:25.519Z",
+  "rev": 39,
+  "settings": {
+    "layout": "both",
+    "theme": "light"
+  },
+  "tags": [
+    "项目",
+    "架构",
+    "进行中"
+  ],
+  "nodes": [
+    {
+      "id": "root",
+      "parent": null,
+      "text": "订单服务重构",
+      "note": "",
+      "order": 0,
+      "collapsed": false,
+      "links": [],
+      "fontSize": 26,
+      "font": "hei"
+    },
+    {
+      "id": "n_bugtp3",
+      "parent": "root",
+      "text": "目标",
+      "note": "这一轮只解决下单链路上最痛的两件事",
+      "order": 0,
+      "collapsed": false,
+      "links": [],
+      "fontSize": 17
+    },
+    {
+      "id": "n_4ifvzp",
+      "parent": "n_bugtp3",
+      "text": "下单接口 P99 压到 200ms 以内",
+      "note": "",
+      "order": 0,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_5dzl0t",
+      "parent": "n_bugtp3",
+      "text": "把库存扣减从订单事务里拆出去",
+      "note": "",
+      "order": 1,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_6najta",
+      "parent": "root",
+      "text": "现在的问题",
+      "note": "",
+      "order": 1,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_5db909",
+      "parent": "n_6najta",
+      "text": "库存和订单在同一个事务，锁冲突多",
+      "note": "",
+      "order": 0,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_kw9txx",
+      "parent": "n_6najta",
+      "text": "高峰期超时率 3%，集中在秒杀时段",
+      "note": "",
+      "order": 1,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_yk8wlv",
+      "parent": "root",
+      "text": "方案",
+      "note": "",
+      "order": 2,
+      "collapsed": false,
+      "links": [],
+      "color": "#fecdd3",
+      "textColor": "#b91c1c",
+      "lineColor": "#0ea5e9",
+      "fontSize": 18,
+      "font": "kai"
+    },
+    {
+      "id": "n_89ktg7",
+      "parent": "n_yk8wlv",
+      "text": "下单后异步扣库存",
+      "note": "",
+      "order": 0,
+      "collapsed": false,
+      "links": [
+        {
+          "kind": "code",
+          "label": "扣减逻辑",
+          "target": "src/order/service.ts#L120-L180"
+        }
+      ],
+      "color": "#fecdd3"
+    },
+    {
+      "id": "n_wdh81m",
+      "parent": "n_yk8wlv",
+      "text": "库存服务独立部署",
+      "note": "",
+      "order": 1,
+      "collapsed": false,
+      "links": [],
+      "color": "#fecdd3"
+    },
+    {
+      "id": "n_xovwr0",
+      "parent": "n_yk8wlv",
+      "text": "灰度：先切 10% 流量",
+      "note": "",
+      "order": 2,
+      "collapsed": false,
+      "links": [],
+      "color": "#fecdd3"
+    },
+    {
+      "id": "n_u41axv",
+      "parent": "root",
+      "text": "风险",
+      "note": "",
+      "order": 3,
+      "collapsed": false,
+      "links": [],
+      "textColor": "#b45309",
+      "lineColor": "#f59e0b"
+    },
+    {
+      "id": "n_9xdmhm",
+      "parent": "n_u41axv",
+      "text": "消息重复消费",
+      "note": "用订单号做幂等键，消费端加去重表",
+      "order": 0,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_8u9rd1",
+      "parent": "n_u41axv",
+      "text": "数据不一致要对账",
+      "note": "每天凌晨跑一次对账脚本，差异超过 0.01% 就告警",
+      "order": 1,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_lxbv5v",
+      "parent": "root",
+      "text": "里程碑",
+      "note": "",
+      "order": 4,
+      "collapsed": false,
+      "links": [],
+      "lineColor": "#10b981"
+    },
+    {
+      "id": "n_i8sioh",
+      "parent": "n_lxbv5v",
+      "text": "第 1 周：方案评审通过",
+      "note": "",
+      "order": 0,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_acldwa",
+      "parent": "n_lxbv5v",
+      "text": "第 3 周：灰度 10%",
+      "note": "",
+      "order": 1,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_kzfnb9",
+      "parent": "n_lxbv5v",
+      "text": "第 6 周：全量",
+      "note": "",
+      "order": 2,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_8jysxt",
+      "parent": "root",
+      "text": "参考材料",
+      "note": "",
+      "order": 5,
+      "collapsed": false,
+      "links": []
+    },
+    {
+      "id": "n_ao1jjj",
+      "parent": "n_8jysxt",
+      "text": "架构说明",
+      "note": "",
+      "order": 0,
+      "collapsed": false,
+      "links": [
+        {
+          "kind": "file",
+          "label": "docs/architecture.md",
+          "target": "docs/architecture.md"
+        }
+      ]
+    },
+    {
+      "id": "n_sc6tdz",
+      "parent": "n_8jysxt",
+      "text": "设计评审记录",
+      "note": "",
+      "order": 1,
+      "collapsed": false,
+      "links": [
+        {
+          "kind": "url",
+          "label": "评审记录",
+          "target": "https://example.com/design-review"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_qez54",
+      "from": "n_89ktg7",
+      "to": "n_8u9rd1",
+      "label": "需要配套"
+    },
+    {
+      "id": "e_tfl7r",
+      "from": "n_9xdmhm",
+      "to": "n_89ktg7",
+      "label": "影响"
+    }
+  ],
+  "journal": [
+    {
+      "rev": 0,
+      "at": "2026-11-17T04:27:09.182Z",
+      "by": "system",
+      "action": "create",
+      "summary": "新建导图"
+    },
+    {
+      "rev": 1,
+      "at": "2026-11-17T04:27:09.183Z",
+      "by": "example",
+      "action": "create",
+      "summary": "示例导图"
+    },
+    {
+      "rev": 2,
+      "at": "2026-11-17T04:35:59.932Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "收起节点"
+    },
+    {
+      "rev": 3,
+      "at": "2026-11-17T04:36:01.752Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "标签：项目、复盘"
+    },
+    {
+      "rev": 4,
+      "at": "2026-11-17T04:36:02.964Z",
+      "by": "check",
+      "action": "ops",
+      "summary": "调整文档设置"
+    },
+    {
+      "rev": 5,
+      "at": "2026-11-17T04:51:41.338Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：向右"
+    },
+    {
+      "rev": 6,
+      "at": "2026-11-17T04:51:44.956Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：双向"
+    },
+    {
+      "rev": 7,
+      "at": "2026-11-17T04:51:46.672Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "切换主题"
+    },
+    {
+      "rev": 8,
+      "at": "2026-11-17T04:51:48.531Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "切换主题"
+    },
+    {
+      "rev": 9,
+      "at": "2026-11-17T04:51:50.410Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：向右"
+    },
+    {
+      "rev": 10,
+      "at": "2026-11-17T04:59:21.993Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "设置连线颜色"
+    },
+    {
+      "rev": 11,
+      "at": "2026-11-17T04:59:23.309Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "设置模块颜色（含子节点）"
+    },
+    {
+      "rev": 12,
+      "at": "2026-11-17T04:59:33.052Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "设置字体颜色"
+    },
+    {
+      "rev": 13,
+      "at": "2026-11-17T04:59:33.955Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "清除连线颜色"
+    },
+    {
+      "rev": 14,
+      "at": "2026-11-17T04:59:35.274Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "设置模块颜色（含子节点）"
+    },
+    {
+      "rev": 15,
+      "at": "2026-11-17T04:59:36.279Z",
+      "by": "check",
+      "action": "ops",
+      "summary": "修改节点"
+    },
+    {
+      "rev": 16,
+      "at": "2026-11-17T05:01:38.662Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "设置字体颜色"
+    },
+    {
+      "rev": 17,
+      "at": "2026-11-17T05:01:39.566Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "设置连线颜色"
+    },
+    {
+      "rev": 18,
+      "at": "2026-11-17T05:01:40.882Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "设置模块颜色（含子节点）"
+    },
+    {
+      "rev": 19,
+      "at": "2026-11-17T05:01:41.889Z",
+      "by": "check",
+      "action": "ops",
+      "summary": "修改节点"
+    },
+    {
+      "rev": 20,
+      "at": "2026-11-17T05:04:07.241Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：双向"
+    },
+    {
+      "rev": 21,
+      "at": "2026-11-17T05:04:08.939Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "切换主题"
+    },
+    {
+      "rev": 22,
+      "at": "2026-11-17T05:04:10.164Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "切换主题"
+    },
+    {
+      "rev": 23,
+      "at": "2026-11-17T05:04:11.067Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：向右"
+    },
+    {
+      "rev": 24,
+      "at": "2026-11-17T05:08:32.644Z",
+      "by": "doc",
+      "action": "ops",
+      "summary": "布局改成 both"
+    },
+    {
+      "rev": 25,
+      "at": "2026-11-17T05:11:17.596Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "调整字号"
+    },
+    {
+      "rev": 26,
+      "at": "2026-11-17T05:11:18.297Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "调整字体"
+    },
+    {
+      "rev": 27,
+      "at": "2026-11-17T05:11:19.002Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "调整框宽"
+    },
+    {
+      "rev": 28,
+      "at": "2026-11-17T05:11:20.211Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "调整字号（含子节点）"
+    },
+    {
+      "rev": 29,
+      "at": "2026-11-17T05:11:21.114Z",
+      "by": "check",
+      "action": "ops",
+      "summary": "修改节点 x2"
+    },
+    {
+      "rev": 30,
+      "at": "2026-11-17T05:14:12.678Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：向右"
+    },
+    {
+      "rev": 31,
+      "at": "2026-11-17T05:14:16.950Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：双向"
+    },
+    {
+      "rev": 32,
+      "at": "2026-11-17T05:14:19.412Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "切换主题"
+    },
+    {
+      "rev": 33,
+      "at": "2026-11-17T05:14:21.570Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "切换主题"
+    },
+    {
+      "rev": 34,
+      "at": "2026-11-17T05:14:23.430Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：向右"
+    },
+    {
+      "rev": 35,
+      "at": "2026-11-17T05:14:46.055Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：双向"
+    },
+    {
+      "rev": 36,
+      "at": "2026-11-17T05:14:48.336Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "切换主题"
+    },
+    {
+      "rev": 37,
+      "at": "2026-11-17T05:14:50.556Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "切换主题"
+    },
+    {
+      "rev": 38,
+      "at": "2026-11-17T05:14:52.426Z",
+      "by": "user",
+      "action": "ops",
+      "summary": "布局：向右"
+    },
+    {
+      "rev": 39,
+      "at": "2026-11-17T05:15:25.519Z",
+      "by": "doc",
+      "action": "ops",
+      "summary": "布局改成 both"
+    }
+  ]
+}
