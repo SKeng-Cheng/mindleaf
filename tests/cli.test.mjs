@@ -21,7 +21,7 @@ const tempProject = () => {
 const run = async (projectDir, args, options = {}) => {
   const { stdout, stderr } = await exec(process.execPath, [BIN, ...args, '--project', projectDir], {
     cwd: ROOT,
-    env: { ...process.env, NO_COLOR: '1' },
+    env: { ...process.env, NO_COLOR: '1', MINDLEAF_NO_OPEN: '1' },
     ...options,
   });
   return { stdout, stderr };
@@ -218,11 +218,15 @@ test('CLI: 后台启动 → 已在运行 → stop 收尾', async () => {
   const stateFile = path.join(projectDir, '.mindleaf', 'server.json');
 
   const started = await run(projectDir, ['serve', '--detach', '--port', '0']);
-  assert.match(started.stdout, /已在后台启动/, started.stdout);
+  assert.match(started.stdout, /已在后台运行/, started.stdout);
+  assert.match(started.stdout, /本人打开/, '启动输出应给出本人入口');
+  assert.match(started.stdout, /发给对方|打开  /, '启动输出应给出协作入口（没有局域网时退化成一条）');
   assert.ok(fs.existsSync(stateFile), '应写出状态文件');
   const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   assert.ok(Number.isInteger(state.pid) && state.pid > 0);
-  assert.ok(state.url.startsWith('http://127.0.0.1:'));
+  assert.ok(state.url.startsWith('http://127.0.0.1:'), `内部地址应为回环，实际 ${state.url}`);
+  assert.equal(state.listenHost, '0.0.0.0', '默认监听所有网卡，协作入口才通');
+  assert.ok(state.token && state.token.length >= 4, '默认应自动生成访问口令');
 
   // 健康检查能通
   const health = await fetch(`${state.url}/api/health`);
@@ -299,6 +303,47 @@ test('CLI: 批注 —— set --annotation、annotations 列表、清空', async 
   await run(projectDir, ['set', '批注图', '第三章', '--annotation', '']);
   const empty = await run(projectDir, ['annotations']);
   assert.match(empty.stdout, /没有待处理的批注/);
+});
+
+test('CLI: 后台启动带口令，状态文件记下 token，stop 也能关掉', async () => {
+  const projectDir = tempProject();
+  const stateFile = path.join(projectDir, '.mindleaf', 'server.json');
+
+  const started = await run(projectDir, ['serve', '--detach', '--port', '0', '--token', 'footoken']);
+  assert.match(started.stdout, /已在后台运行/, started.stdout);
+  assert.match(started.stdout, /\?t=footoken/, '启动输出里应给出带口令的地址');
+
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.equal(state.token, 'footoken', '状态文件应记下 token');
+
+  // 没口令打不开
+  const bare = await fetch(`${state.url}/api/state`);
+  assert.equal(bare.status, 401);
+
+  // 带口令可以
+  const withToken = await fetch(`${state.url}/api/state?t=footoken`);
+  assert.equal(withToken.status, 200);
+
+  // mm stop 会自动带上 token
+  const stopped = await run(projectDir, ['stop']);
+  assert.match(stopped.stdout, /已关闭后台服务/);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(fs.existsSync(stateFile), false);
+});
+
+test('CLI: 默认自动打开浏览器，MINDLEAF_NO_OPEN=1 时不开', async () => {
+  const projectDir = tempProject();
+  // 测试环境默认设了 MINDLEAF_NO_OPEN=1（避免跑测试弹窗），这里显式对照两次
+  const noOpen = await run(projectDir, ['serve', '--detach', '--port', '0']);
+  assert.doesNotMatch(noOpen.stdout, /已在浏览器打开/, 'MINDLEAF_NO_OPEN=1 时不该开浏览器');
+  await run(projectDir, ['stop']);
+
+  const withOpen = await exec(process.execPath, [BIN, 'serve', '--detach', '--port', '0', '--project', projectDir], {
+    cwd: ROOT,
+    env: { ...process.env, NO_COLOR: '1', MINDLEAF_NO_OPEN: '' },
+  });
+  assert.match(withOpen.stdout, /已在浏览器打开/, '默认应该自动打开浏览器');
+  await run(projectDir, ['stop']);
 });
 
 test('CLI: export 各种格式', async () => {

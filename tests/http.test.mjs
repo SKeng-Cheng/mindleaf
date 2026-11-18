@@ -31,6 +31,55 @@ const setup = async () => {
   return { session, base, api, projectDir };
 };
 
+test('HTTP: 设了口令后，没口令一律 401，带口令（网址/cookie/请求头）才放行', async (t) => {
+  const projectDir = tempProject();
+  const session = await startServer({ projectDir, port: 0, host: '127.0.0.1', token: 'abc123' });
+  t.after(() => session.close());
+
+  // 没口令
+  const bare = await fetch(`${session.url}/`);
+  assert.equal(bare.status, 401, '没口令打开页面应 401');
+  const bareText = await bare.text();
+  assert.match(bareText, /访问口令/, '应给出提示页面');
+  assert.match(bareText, /<form/, '页面上应有输入口令的表单');
+  assert.equal((await fetch(`${session.url}/api/state`)).status, 401, '接口没口令也应 401');
+
+  // 错口令
+  assert.equal((await fetch(`${session.url}/?t=wrong`)).status, 401);
+  assert.equal((await fetch(`${session.url}/api/state?t=wrong`)).status, 401);
+
+  // 正确口令（网址）+ 种 cookie
+  const ok = await fetch(`${session.url}/?t=abc123`);
+  assert.equal(ok.status, 200);
+  const cookie = ok.headers.get('set-cookie') ?? '';
+  assert.match(cookie, /mindleaf_token=abc123/, `应种下 cookie，实际 ${cookie}`);
+  assert.match(cookie, /HttpOnly/, 'cookie 应是 HttpOnly');
+  assert.match(cookie, /SameSite=Lax/, 'cookie 应是 SameSite=Lax');
+
+  // 之后用 cookie 访问接口（前端不用改代码）
+  const viaCookie = await fetch(`${session.url}/api/state`, { headers: { cookie: 'mindleaf_token=abc123' } });
+  assert.equal(viaCookie.status, 200);
+  assert.ok((await viaCookie.json()).maps, '应返回状态');
+
+  // 请求头方式（给 CLI / 脚本用）
+  const viaHeader = await fetch(`${session.url}/api/state`, { headers: { 'x-mindleaf-token': 'abc123' } });
+  assert.equal(viaHeader.status, 200);
+
+  // 健康检查始终放行（用来判断服务是否起来）
+  assert.equal((await fetch(`${session.url}/api/health`)).status, 200);
+
+  // shareUrl 带上口令
+  assert.match(session.shareUrl, /\?t=abc123/);
+  assert.equal(session.token, 'abc123');
+});
+
+test('HTTP: 没设口令时一切照旧可访问', async (t) => {
+  const { session, api } = await setup();
+  t.after(() => session.close());
+  assert.equal((await api('GET', '/api/state')).status, 200);
+  assert.equal(session.shareUrl, session.url, '没口令时分享地址就是普通地址');
+});
+
 test('HTTP: 最后一个页面关掉后服务自动退出', async (t) => {
   const projectDir = tempProject();
   const session = await startServer({ projectDir, port: 0, host: '127.0.0.1', idleExitMs: 250 });

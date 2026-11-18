@@ -751,12 +751,24 @@ Example: {"ops":[{"op":"addNode","parent":"n_root","text":"第 1 章"},{"op":"ad
     },
     async (args) => {
       const session = await ensureServer(store, args.port);
-      const url = args.map ? `${session.url}/#${encodeURIComponent(args.map)}` : session.url;
+      const { accessEntries } = await import('../server/access.mjs');
+      const entries = accessEntries({
+        port: session.port,
+        listenHost: session.host,
+        token: session.token,
+        map: args.map,
+      });
       if (args.open !== false) {
         const { openInBrowser } = await import('../export/raster.mjs');
-        await openInBrowser(url);
+        await openInBrowser(entries.local);
       }
-      return toolResult(`网页已就绪：${url}\n（服务进程随本 MCP 进程存活；进程退出后网页失效，可改用它自己的 \`mindleaf serve\` 常驻。）`);
+      const lines = entries.same
+        ? [`打开：${entries.local}`]
+        : [`本人打开：${entries.local}`, `发给对方（同一局域网）：${entries.lan}`];
+      return toolResult(
+        `网页已就绪，请把地址给人类：\n${lines.join('\n')}\n\n` +
+          '（这个服务随 MCP 进程存活；MCP 退出后网页失效，需要常驻请让人类自己跑 `mm serve --detach --open`。）',
+      );
     },
   );
 
@@ -792,7 +804,15 @@ let embeddedSession = null;
 async function ensureServer(store, port) {
   if (embeddedSession) return embeddedSession;
   const { startServer } = await import('../server/http.mjs');
-  embeddedSession = await startServer({ store, port: Number.isInteger(port) ? port : 7788 });
+  const { resolveToken } = await import('../server/access.mjs');
+  // 和 `mm serve` 保持一致的默认：所有网卡 + 记住的访问口令
+  const token = resolveToken(store.projectDir, {});
+  embeddedSession = await startServer({
+    store,
+    port: Number.isInteger(port) ? port : 7788,
+    host: '0.0.0.0',
+    token,
+  });
   return embeddedSession;
 }
 

@@ -113,6 +113,46 @@ function workspaceRootFor(store) {
   return store.workspaceDir ?? store.projectDir;
 }
 
+/* ---------------- 访问口令（token） ---------------- */
+
+const TOKEN_COOKIE = 'mindleaf_token';
+const TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 天
+
+/** 从 query / 请求头 / cookie 里取口令。 */
+export function tokenFromRequest(req, url) {
+  const fromQuery = url?.searchParams?.get('t');
+  if (fromQuery) return fromQuery.trim();
+  const header = req.headers['x-mindleaf-token'];
+  if (typeof header === 'string' && header.trim()) return header.trim();
+  const cookie = req.headers.cookie;
+  if (cookie) {
+    for (const part of cookie.split(';')) {
+      const [key, ...rest] = part.trim().split('=');
+      if (key === TOKEN_COOKIE) return decodeURIComponent(rest.join('='));
+    }
+  }
+  return '';
+}
+
+/** 口令不对时给的页面：一个输入框，提交后带上 ?t=。 */
+function tokenPage(needForm) {
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Mindleaf · 需要口令</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:#0f172a;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+  main{max-width:360px;margin:0 auto;padding:22vh 24px}
+  h1{font-size:17px;margin:0 0 6px}
+  p{color:#8fa3ba;font-size:13px;line-height:1.6;margin:0 0 18px}
+  form{display:flex;gap:8px}
+  input{flex:1;height:38px;padding:0 12px;border-radius:9px;border:1px solid #2b4670;background:#141f33;color:#e6edf3;font-size:14px}
+  button{height:38px;padding:0 16px;border:0;border-radius:9px;background:#3b82f6;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+</style></head><body><main>
+<h1>这张导图需要访问口令</h1>
+<p>向分享者要一下网址里的 <code>?t=</code> 后面的口令，或者在下面填进来。</p>
+${needForm ? '<form method="get" action="/"><input name="t" placeholder="访问口令" autocomplete="off" autofocus><button type="submit">进入</button></form>' : ''}
+</main></body></html>`;
+}
+
 export async function createApp(options = {}) {
   const store = options.store ?? new Store({ projectDir: options.projectDir }).init();
   store.watch();
@@ -354,10 +394,31 @@ export async function createApp(options = {}) {
     }
   }
 
+  const requiredToken = typeof options.token === 'string' && options.token.trim() ? options.token.trim() : '';
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? '127.0.0.1'}`);
     const pathname = decodeURIComponent(url.pathname);
     res.setHeader('x-mindleaf', '1');
+
+    // 口令校验：只放行健康检查（用于判断服务是否起来），其余一律要口令
+    if (requiredToken && pathname !== '/api/health') {
+      const provided = tokenFromRequest(req, url);
+      if (provided !== requiredToken) {
+        if (pathname.startsWith('/api/')) {
+          fail(res, 401, 'unauthorized', '需要访问口令（网址里的 ?t=…）');
+          return;
+        }
+        res.writeHead(401, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(tokenPage(true));
+        return;
+      }
+      // 口令对：种一个 cookie，之后页面里的 fetch / SSE 自动带上，不用改前端代码
+      if (url.searchParams.get('t')) {
+        res.setHeader('set-cookie', `${TOKEN_COOKIE}=${encodeURIComponent(requiredToken)}; Path=/; Max-Age=${TOKEN_COOKIE_MAX_AGE}; SameSite=Lax; HttpOnly`);
+      }
+    }
+
     try {
       if (pathname.startsWith('/api/')) {
         for (const item of routes) {
@@ -498,6 +559,7 @@ export async function startServer(options = {}) {
 
   const app = await createApp({
     ...options,
+    token: options.token,
     onClientsChange: handleClientsChange,
     // /api/shutdown 走同一条收尾路径
     onShutdownRequest: () => shutdown(),
@@ -526,7 +588,10 @@ export async function startServer(options = {}) {
     tryListen(requested);
   });
   const actualPort = app.server.address()?.port ?? port;
-  const url = `http://${host}:${actualPort}`;
+  // 监听 0.0.0.0 / :: 时，地址栏里应该给 127.0.0.1，否则浏览器打不开
+  const displayHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+  const url = `http://${displayHost}:${actualPort}`;
+  const shareUrl = options.token ? `${url}/?t=${encodeURIComponent(String(options.token).trim())}` : url;
 
   app.server.on('close', () => {
     closed = true;
@@ -540,6 +605,8 @@ export async function startServer(options = {}) {
     host,
     port: actualPort,
     url,
+    shareUrl,
+    token: options.token ?? '',
     /** 页面全部关闭 / 手动关闭时 resolve（detach 模式靠它退出进程） */
     exited,
     /** 再挂一个监听，拿到当前和后续的页面数量 */

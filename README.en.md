@@ -37,6 +37,9 @@ git clone -b lite --depth 1 https://github.com/SKeng-Cheng/mindleaf.git
 cd mindleaf && node bin/mindleaf.mjs serve --open
 ```
 
+On startup it prints two URLs: **open locally** and **send to someone** — a colleague on the same LAN
+just opens the second one in a browser, no install, editing the same files as you.
+
 On macOS you can also double-click `启动 Mindleaf.command`. The server exits by itself once every page
 is closed.
 

@@ -49,7 +49,7 @@ $MM add 项目规划 "下一步：灰度发布" --parent root
 $MM tag 项目规划 --add 项目,进行中  # 打标签
 $MM list --tag 项目                 # 按标签筛
 $MM export 项目规划 -f png         # 默认写到 exports/
-$MM serve --detach --open          # 后台起网页（关掉终端也不停，网页全关后自动退出）
+$MM serve --detach                 # 后台起网页（会打印"本人/发给对方"两个入口；网页全关后自动退出）
 $MM stop                           # 关掉后台服务
 $MM annotations                    # 看有没有人类留的批注要处理
 $MM edges                          # 列出关联线（带 id）
@@ -126,7 +126,8 @@ src/export/             导出
   raster.mjs            借用系统浏览器/sips/rsvg 把 SVG 变像素
 src/server/             HTTP 服务（零依赖 node:http）
   store.mjs             项目、文件、加锁、历史、diff
-  http.mjs              路由 + SSE + 静态资源
+  http.mjs              路由 + SSE + 静态资源 + 访问口令校验
+  access.mjs            访问入口：本机/局域网地址、口令生成与记忆
   templates.mjs         内置模板加载
 src/mcp/server.mjs      MCP stdio 服务器
 src/cli.mjs             命令行

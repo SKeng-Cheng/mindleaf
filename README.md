@@ -31,7 +31,10 @@ git clone -b lite --depth 1 https://github.com/SKeng-Cheng/mindleaf.git
 cd mindleaf && node bin/mindleaf.mjs serve --open
 ```
 
-macOS 上双击仓库里的「启动 Mindleaf.command」也行。网页全部关掉后服务会自己退出。
+启动后会打印两个网址：**本人打开** 和 **发给对方**（同一个局域网里的人用浏览器就能打开同一份图，
+不用装任何东西）。网页全部关掉后服务会自己退出。
+
+macOS 上双击仓库里的「启动 Mindleaf.command」也行。
 
 # 能干什么
 

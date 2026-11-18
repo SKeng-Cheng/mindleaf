@@ -1,6 +1,7 @@
 #!/bin/bash
 # macOS 双击即可启动 Mindleaf（会打开默认浏览器）。
 # 启动后是后台服务：关掉这个终端窗口不影响使用，网页全部关掉后服务自己退出。
+# 启动时会打印两个入口：「本人打开」和「发给对方」（同一局域网即可）。
 # 想固定端口：`node bin/mindleaf.mjs serve --detach --port 7788 --open`
 cd "$(dirname "$0")" || exit 1
 
@@ -32,4 +33,5 @@ fi
 echo
 echo "已转到后台。关掉本窗口即可，浏览器里关掉 Mindleaf 页面后服务会自己退出。"
 echo "想手动关闭：cd \"$(pwd)\" && node bin/mindleaf.mjs stop"
-sleep 2
+echo
+sleep 4

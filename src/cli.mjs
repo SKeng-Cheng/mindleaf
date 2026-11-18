@@ -5,6 +5,7 @@
  * CLI 与网页、MCP 共用 Store，因此三条通道永远看到同一份文件。
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -14,6 +15,7 @@ import { fromMarkdown, guessTitle, toMarkdown } from './core/markdown.mjs';
 import { resolveNodeRef } from './mcp/server.mjs';
 import { EXPORT_FORMATS } from './export/exporters.mjs';
 import { detectEngines, openInBrowser } from './export/raster.mjs';
+import { accessEntries, formatAccessEntries, isAllInterfaces, pingServer, resolveToken } from './server/access.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -32,9 +34,13 @@ const HELP = `${c.bold('mindleaf')} —— AI 友好的本地思维导图（零�
 
 用法: mm <命令> [选项]
 常用:
-  mm serve [--port 7788] [--open]     启动网页（人机共用同一份文件）
-  mm serve --open                     前台启动；网页全关后自动退出（--no-exit-when-closed 保持常驻）
-  mm serve --detach [--open]          后台启动：关掉终端也不停，网页全关后自己退出
+  mm serve [--port 7788]              启动网页并自动打开浏览器（--no-open 不打开）
+  mm serve                            前台启动；网页全关后自动退出（--no-exit-when-closed 保持常驻）
+  mm serve --detach                   后台启动：关掉终端也不停，网页全关后自己退出
+  mm serve                             起网页，打印"本人/发给对方"两个入口（默认自动带口令）
+  mm serve --token 口令                 指定访问口令（会记住，下次还用这个）
+  mm serve --no-token                  不要口令（同网段任何人都能开，慎用）
+  mm serve --host 127.0.0.1            只给本机用，不对外
   mm stop                             关闭后台服务
   mm list [--tag 标签]               列出全部导图（可按标签过滤）
   mm tag <导图> [--add a,b] [--remove c] [--set x,y] [--clear]   管理标签
@@ -73,6 +79,9 @@ const parse = (argv) => {
       port: { type: 'string' },
       open: { type: 'boolean' },
       host: { type: 'string' },
+      token: { type: 'string' },
+      'no-token': { type: 'boolean' },
+      'no-open': { type: 'boolean' },
       detach: { type: 'boolean' },
       'detached-child': { type: 'boolean' },
       'exit-when-closed': { type: 'boolean' },
@@ -187,6 +196,34 @@ const pad = (text, width) => {
   return value + ' '.repeat(Math.max(0, width - displayWidth(value)));
 };
 
+/** 虚拟网卡前缀：虚拟机的桥接、容器、VPN 都会冒出来，不该当成"分享地址"。 */
+const VIRTUAL_IFACE = /^(bridge|vmnet|vboxnet|docker|utun|awdl|llw|anpi|gif|stf|p2p|tun|tap|zt)/i;
+
+/**
+ * 启动服务后是否自动打开浏览器。
+ * 默认开（符合"起服务就是给我用"的直觉）；--no-open 或环境变量 MINDLEAF_NO_OPEN=1 关掉
+ * （测试、脚本、远程机器上不该自己弹浏览器）。
+ */
+/** 打开浏览器并说一声（失败也给提示，别让人干等）。 */
+async function openBrowserAndReport(target) {
+  try {
+    const result = await openInBrowser(target);
+    if (result?.code === 0) console.log(c.dim('  已在浏览器打开'));
+    else console.log(c.yellow('  没能自动打开浏览器，请手动点上面的地址'));
+    return result;
+  } catch {
+    console.log(c.yellow('  没能自动打开浏览器，请手动点上面的地址'));
+    return null;
+  }
+}
+
+function shouldOpenBrowser(values) {
+  if (values['no-open'] === true) return false;
+  if (values.open === true) return true;
+  if (process.env.MINDLEAF_NO_OPEN === '1') return false;
+  return true;
+}
+
 /** 后台服务的状态文件：记 pid / 端口 / url，`mm stop` 靠它找到进程。 */
 function serverStateFile(projectDir) {
   return path.join(projectDir, '.mindleaf', 'server.json');
@@ -224,23 +261,20 @@ const isProcessAlive = (pid) => {
   }
 };
 
-async function pingServer(url) {
-  try {
-    const response = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(700) });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 /** 后台启动：父进程只负责拉起来、等它就绪，然后退出。 */
 async function serveDetached(values, positionals, store) {
   const existing = readServerState(store.projectDir);
   if (existing && isProcessAlive(existing.pid) && (await pingServer(existing.url))) {
-    const url = positionals[0] ? `${existing.url}/#${encodeURIComponent(positionals[0])}` : existing.url;
-    console.log(`${c.yellow('•')} Mindleaf 已经在后台运行 ${c.bold(url)}${c.dim(`  pid ${existing.pid}`)}`);
-    console.log(c.dim('  想关掉：mm stop'));
-    if (values.open) await openInBrowser(url);
+    const entries = accessEntries({
+      port: existing.port,
+      listenHost: existing.listenHost ?? existing.host ?? '0.0.0.0',
+      token: existing.token,
+      map: positionals[0],
+    });
+    console.log(`${c.yellow('•')} Mindleaf 已经在后台运行${c.dim(`  pid ${existing.pid}`)}`);
+    for (const line of formatAccessEntries(entries, c)) console.log(line);
+    console.log(c.dim('\n  想关掉：mm stop'));
+    if (shouldOpenBrowser(values)) await openBrowserAndReport(entries.local);
     return;
   }
   if (existing) clearServerState(store.projectDir);
@@ -249,6 +283,7 @@ async function serveDetached(values, positionals, store) {
   const args = [entry, 'serve', '--detached-child', '--project', store.projectDir];
   if (values.port) args.push('--port', String(values.port));
   if (values.host) args.push('--host', values.host);
+  if (values.token) args.push('--token', values.token);
   if (values.idleTimeout) args.push('--idle-timeout', String(values.idleTimeout));
   if (positionals[0]) args.push(positionals[0]);
 
@@ -274,12 +309,18 @@ async function serveDetached(values, positionals, store) {
     throw new StoreError('后台服务没能启动，试一下前台运行：mm serve --open', 'server_error');
   }
 
-  const url = positionals[0] ? `${state.url}/#${encodeURIComponent(positionals[0])}` : state.url;
-  console.log(`${c.green('✔')} Mindleaf 已在后台启动 ${c.bold(url)}${c.dim(`  pid ${state.pid}`)}`);
-  console.log(c.dim(`  项目: ${store.projectDir}`));
+  const entries = accessEntries({
+    port: state.port,
+    listenHost: state.listenHost ?? state.host ?? '0.0.0.0',
+    token: state.token,
+    map: positionals[0],
+  });
+  console.log(`${c.green('✔')} Mindleaf 已在后台运行${c.dim(`  pid ${state.pid}`)}`);
+  for (const line of formatAccessEntries(entries, c)) console.log(line);
+  console.log(c.dim(`\n  项目: ${store.projectDir}`));
   console.log(c.dim('  关掉终端也不影响；网页全部关闭后服务会自己退出'));
   console.log(c.dim('  想手动关掉：mm stop'));
-  if (values.open || positionals[0]) await openInBrowser(url);
+  if (shouldOpenBrowser(values) || positionals[0]) await openBrowserAndReport(entries.local);
 }
 
 async function cmdServe(values, positionals) {
@@ -295,23 +336,33 @@ async function cmdServe(values, positionals) {
   const idleTimeout = number(values['idle-timeout'], 20000);
   // 前台默认也是"网页全关就退出"，想让它一直挂着用 --no-exit-when-closed
   const exitWhenClosed = isChild || values['exit-when-closed'] === true || values['no-exit-when-closed'] !== true;
+  // 默认监听所有网卡，这样"发给对方"的入口才是通的；只给本机用可以 --host 127.0.0.1
+  const listenHost = values.host ?? '0.0.0.0';
+  // 默认自动生成并记住一个访问口令；--no-token 关掉
+  const token = resolveToken(store.projectDir, { token: values.token, noToken: values['no-token'] === true });
   const session = await startServer({
     store,
     port: number(values.port, 7788),
-    host: values.host,
+    host: listenHost,
+    token,
     idleExitMs: exitWhenClosed ? idleTimeout : 0,
     firstPageTimeoutMs: isChild ? 120000 : 0,
   });
 
   const mapFilter = positionals[0];
-  const url = mapFilter ? `${session.url}/#${encodeURIComponent(mapFilter)}` : session.url;
+  const entries = accessEntries({ port: session.port, listenHost, token, map: mapFilter });
 
   if (isChild) {
-    // 后台子进程：写状态文件、忽略挂断信号，把日志丢掉
+    // 后台子进程：不自己开浏览器（父进程会开），只写状态文件、忽略挂断信号
     writeServerState(store.projectDir, {
       pid: process.pid,
       port: session.port,
       url: session.url,
+      host: listenHost,
+      listenHost,
+      token,
+      lanUrl: entries.lan,
+      localUrl: entries.local,
       projectDir: store.projectDir,
       startedAt: new Date().toISOString(),
     });
@@ -327,14 +378,18 @@ async function cmdServe(values, positionals) {
     return;
   }
 
-  console.log(`${c.green('✔')} Mindleaf 已启动 ${c.bold(url)}`);
-  console.log(c.dim(`  项目: ${store.projectDir}`));
+  console.log(`${c.green('✔')} Mindleaf 已启动`);
+  for (const line of formatAccessEntries(entries, c)) console.log(line);
+  if (!token) {
+    console.log(c.yellow('  ⚠️ 没设访问口令：同一个网段的任何人都能打开并修改（加 --token 或去掉 --no-token）。'));
+  }
+  console.log(c.dim(`\n  项目: ${store.projectDir}`));
   console.log(c.dim(`  导图: ${store.mapsDir}`));
   console.log(c.dim(`  浏览器能力: ${session.engines.chromium[0] ?? '未找到无头浏览器'}${session.engines.sips ? ' · sips 可用' : ''}`));
   console.log(
     c.dim(exitWhenClosed ? `  Ctrl+C 停止；网页全部关闭 ${Math.round(idleTimeout / 1000)} 秒后自动退出` : '  Ctrl+C 停止'),
   );
-  if (values.open || mapFilter) await openInBrowser(url);
+  if (shouldOpenBrowser(values) || mapFilter) await openBrowserAndReport(entries.local);
 
   if (exitWhenClosed) {
     await Promise.race([
@@ -364,7 +419,11 @@ async function cmdStop(values) {
   // 先请它自己收尾（会关掉 SSE、清状态文件），不行再直接杀
   if (alive) {
     try {
-      await fetch(`${state.url}/api/shutdown`, { method: 'POST', signal: AbortSignal.timeout(1500) });
+      await fetch(`${state.url}/api/shutdown`, {
+        method: 'POST',
+        headers: state.token ? { 'x-mindleaf-token': state.token } : undefined,
+        signal: AbortSignal.timeout(1500),
+      });
     } catch {
       /* 可能已经挂了，下面兜底 */
     }
