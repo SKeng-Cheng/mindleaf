@@ -52,7 +52,8 @@ is closed.
 | **Edit with an AI** | MCP over stdio, 21 tools; works with DSH, Codex, Claude Code, Claude Desktop |
 | **Annotations** | write "change this bit like so" on a node; the agent sees it first and follows it, and the blue dot goes away when it's done |
 | **Hover for notes** | rest the mouse on a node and its note pops up next to the cursor (delay configurable) |
-| **Paste screenshots** | ⌘V a screenshot straight into a node's note — figures, plots and review comments stay with the node |
+| **Paste images** | ⌘V a screenshot straight into a note, on a node or on the whole map; each stays a small icon until you expand it |
+| **Map-level notes** | with nothing selected you edit notes, annotations and images for the whole map |
 | **Tags + outline** | tag maps and filter by tag; switch the sidebar to an indented outline, click to jump, collapse in place |
 | **Styling** | box / text / line colours, font size, font, box width and height — apply to one node or a whole branch |
 | **Relations** | dashed links across branches; click one to edit its label, colour, note or annotation |

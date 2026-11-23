@@ -108,6 +108,8 @@ const ICON = {
   cursor: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 4 14 7-6 1.6L9.5 19 5 4Z"/></svg>',
   leaf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c0-6.5 5.4-11.8 14.5-12.8C18.5 15.5 13.7 20 7 20"/><path d="M5 20c2.5-4.4 6-7.2 9.5-8.9"/></svg>',
   tag: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h8l8 8-8 8-8-8z"/><circle cx="8.5" cy="8.5" r="1.4"/></svg>',
+  chevronUp: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>',
+  image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/></svg>',
 };
 
 const formatBytes = (bytes) => {
@@ -222,6 +224,7 @@ const state = {
   sidebarTab: 'maps', // maps | outline
   styleScope: 'node', // node | subtree
   selectedEdgeId: null, // 选中的关联线
+  expandedImages: new Set(), // 展开的图片 id（可以同时展开多张）
   linkFrom: null, // 正在连线的起点节点 id
   tagFilter: '',
   outlineQuery: '',
@@ -404,6 +407,8 @@ function renderTopbar() {
   title.textContent = state.doc ? state.doc.title : '未选择导图';
   title.classList.toggle('is-empty', !state.doc);
   title.title = state.doc ? '重命名当前导图' : '未选择导图';
+  title.classList.toggle('has-annotation', Boolean(state.doc?.annotation));
+  title.title += state.doc?.annotation ? '（这张图有批注）' : '';
 
   $('#btn-undo').disabled = !state.undo.length;
   $('#btn-redo').disabled = !state.redo.length;
@@ -704,22 +709,47 @@ function edgeInspectorHtml(edge) {
 }
 
 function emptyInspectorHtml() {
-  const stats = docStats(state.doc);
+  const doc = state.doc;
+  const stats = docStats(doc);
+  const images = doc.images ?? [];
   return `
-    <div class="insp-empty">
-      <div class="insp-empty-mark">${ICON.cursor}</div>
-      <p class="insp-empty-title">选择一个节点开始编辑</p>
-      <p>点击画布上的节点查看属性；双击进入行内编辑，拖拽节点可以换一个父节点。</p>
-      <div class="insp-empty-hints">
-        <div><kbd>Tab</kbd><span>加子节点</span></div>
-        <div><kbd>Enter</kbd><span>加同级节点</span></div>
-        <div><kbd>F2</kbd><span>编辑选中节点</span></div>
-        <div><kbd>⌘Z</kbd><span>撤销上一步</span></div>
-      </div>
-      <div class="insp-doc">
-        <div class="insp-doc-title">${esc(state.doc.title)}</div>
-        <div class="insp-doc-meta">${stats.nodes} 个节点 · ${stats.edges} 条关联线 · 最大层级 ${stats.maxDepth + 1}</div>
-      </div>
+    <div class="insp-scroll">
+      <section class="field">
+        <div class="insp-doc">
+          <div class="insp-doc-title">${esc(doc.title)}</div>
+          <div class="insp-doc-meta">${stats.nodes} 个节点 · ${stats.edges} 条关联线 · 最大层级 ${stats.maxDepth + 1}</div>
+        </div>
+        <p class="hint">没有选中节点。这里写的是整张图的备注、批注和图片；选中某个节点后，编辑的是那个节点。</p>
+      </section>
+      <section class="field">
+        <label class="lab" for="doc-note">备注 <span class="lab-tag soft">整张图</span></label>
+        <textarea class="input textarea" id="doc-note" rows="4" placeholder="这张图整体是干什么的、资料来源、当前进度…">${esc(doc.note ?? '')}</textarea>
+      </section>
+      <section class="field">
+        <div class="image-head">
+          <span class="lab">图片 <span class="count">${images.length}</span></span>
+          <button type="button" class="btn ghost xs" data-act="image-pick" title="也可以直接把图片粘到上面的备注框里">选图片…</button>
+        </div>
+        <div class="image-list">${images.length ? images.map((image, index) => imageItemHtml(image, index)).join('') : '<p class="image-empty">把图片直接粘到上面的备注框里（⌘V），或者点「选图片…」。</p>'}</div>
+      </section>
+      <section class="field">
+        <div class="annotation-head">
+          <span class="lab">批注 <span class="lab-tag">给 AI 看</span></span>
+          ${doc.annotation ? '<button type="button" class="btn ghost xs" data-act="doc-annotation-clear" title="清空这条批注">清空</button>' : ''}
+        </div>
+        <textarea class="input textarea annotation-input${doc.annotation ? ' has-value' : ''}" id="doc-annotation" rows="3" maxlength="4000"
+          placeholder="想让 AI 对整张图做什么？例如：把第 3 章拆细一点、统一一下命名">${esc(doc.annotation ?? '')}</textarea>
+        <p class="hint annotation-hint">AI 读取导图时会先看到图和节点上的批注。带批注的图会在标题旁标一个蓝点。</p>
+      </section>
+      <section class="field">
+        <span class="lab">快捷键</span>
+        <div class="insp-empty-hints">
+          <div><kbd>Tab</kbd><span>加子节点</span></div>
+          <div><kbd>Enter</kbd><span>加同级节点</span></div>
+          <div><kbd>F2</kbd><span>编辑选中节点</span></div>
+          <div><kbd>⌘Z</kbd><span>撤销上一步</span></div>
+        </div>
+      </section>
     </div>`;
 }
 
@@ -767,29 +797,27 @@ function linkFormHtml() {
     </div>`;
 }
 
-/**
- * 只重绘"截图"那一块。
- * 不能整块重绘检查器：粘贴时焦点还在备注框里，整块重绘会把没保存的文字冲掉。
- */
-function syncImageSection(node) {
-  const list = document.querySelector('.image-list');
-  if (!list || !node) return;
-  const images = node.images ?? [];
-  list.innerHTML = images.length
-    ? images.map((image, index) => imageItemHtml(image, index)).join('')
-    : '<p class="image-empty">把截图直接粘到上面的备注框里（⌘V），或者点「选图片…」。</p>';
-  const count = document.querySelector('.image-head .count');
-  if (count) count.textContent = String(images.length);
-}
-
 function imageItemHtml(image, index) {
   const src = `/api/assets?path=${encodeURIComponent(image.path)}`;
-  return `
-    <div class="image-item" data-image-id="${esc(image.id)}">
-      <button type="button" class="image-thumb" data-act="image-open" data-index="${index}" title="点击看大图">
-        <img src="${src}" alt="${esc(image.name ?? '截图')}" loading="lazy">
+  const expanded = state.expandedImages.has(image.id);
+  const label = image.name ?? '图片';
+  if (!expanded) {
+    // 默认收成一个小图标：点一下展开（展开的多张可以同时存在）
+    return `
+    <div class="image-item is-collapsed" data-image-id="${esc(image.id)}">
+      <button type="button" class="image-icon" data-act="image-expand" data-image-id="${esc(image.id)}" title="${esc(label)} · 点击展开">
+        <img src="${src}" alt="${esc(label)}" loading="lazy">
       </button>
       <button type="button" class="image-del" data-act="image-remove" data-image-id="${esc(image.id)}" title="移除这张图" aria-label="移除">${ICON.x}</button>
+    </div>`;
+  }
+  return `
+    <div class="image-item is-expanded" data-image-id="${esc(image.id)}">
+      <button type="button" class="image-thumb" data-act="image-open" data-index="${index}" title="${esc(label)} · 点击看大图">
+        <img src="${src}" alt="${esc(label)}" loading="lazy">
+      </button>
+      <button type="button" class="image-del" data-act="image-remove" data-image-id="${esc(image.id)}" title="移除这张图" aria-label="移除">${ICON.x}</button>
+      <button type="button" class="image-collapse" data-act="image-collapse" data-image-id="${esc(image.id)}" title="收起" aria-label="收起">${ICON.chevronUp}</button>
     </div>`;
 }
 
@@ -809,11 +837,11 @@ function nodeInspectorHtml(node) {
       </section>
       <section class="field">
         <div class="image-head">
-          <span class="lab">截图 <span class="count">${(node.images ?? []).length}</span></span>
-          <button type="button" class="btn ghost xs" data-act="image-pick" title="也可以直接把图片粘到下面的备注框里">选图片…</button>
+          <span class="lab">图片 <span class="count">${(node.images ?? []).length}</span></span>
+          <button type="button" class="btn ghost xs" data-act="image-pick" title="也可以直接把图片粘到上面的备注框里">选图片…</button>
         </div>
         <div class="image-list">${(node.images ?? []).map((image, index) => imageItemHtml(image, index)).join('')}${
-          (node.images ?? []).length ? '' : '<p class="image-empty">把截图直接粘到上面的备注框里（⌘V），或者点「选图片…」。</p>'
+          (node.images ?? []).length ? '' : '<p class="image-empty">把图片直接粘到上面的备注框里（⌘V），或者点「选图片…」。</p>'
         }</div>
       </section>
       <section class="field">
@@ -1286,7 +1314,9 @@ function applyServerDoc(doc, { fit = false } = {}) {
   if (!doc) return;
   state.doc = doc;
   state.rev = doc.rev;
-  if (!state.selectedId || !getNode(doc, state.selectedId)) state.selectedId = rootId(doc);
+  // 只在"原来选中的节点没了"时退回根；原本就没选节点时保持不选，
+  // 否则在整图面板里写备注会被强行跳到根节点上（面板就跳走了）。
+  if (state.selectedId && !getNode(doc, state.selectedId)) state.selectedId = rootId(doc);
   applyTheme(currentTheme());
   renderCanvas({ fit });
   renderTopbar();
@@ -2181,6 +2211,55 @@ function captureFieldHeights() {
   }
 }
 
+/* ---- 整张图的备注 / 批注 ---- */
+
+let docNoteTimer = null;
+
+function setDocField(field, value, label) {
+  const current = state.doc?.[field] ?? '';
+  if (current === String(value).trim()) return;
+  runOps([{ op: 'setDoc', [field]: value }], { label });
+}
+
+function scheduleDocNoteSave(value) {
+  if (docNoteTimer) clearTimeout(docNoteTimer);
+  docNoteTimer = setTimeout(() => {
+    docNoteTimer = null;
+    setDocField('note', value, '编辑整图备注');
+  }, 650);
+}
+
+function saveDocNoteNow(value) {
+  if (docNoteTimer) {
+    clearTimeout(docNoteTimer);
+    docNoteTimer = null;
+  }
+  setDocField('note', value, '编辑整图备注');
+}
+
+function scheduleDocAnnotationSave(value) {
+  if (docAnnotationTimer) clearTimeout(docAnnotationTimer);
+  docAnnotationTimer = setTimeout(() => {
+    docAnnotationTimer = null;
+    setDocField('annotation', value, value.trim() ? '写整图批注' : '清空整图批注');
+  }, 650);
+}
+
+let docAnnotationTimer = null;
+
+function saveDocAnnotationNow(value) {
+  if (docAnnotationTimer) {
+    clearTimeout(docAnnotationTimer);
+    docAnnotationTimer = null;
+  }
+  setDocField('annotation', value, value.trim() ? '写整图批注' : '清空整图批注');
+}
+
+async function clearDocAnnotation() {
+  if (!state.doc?.annotation) return;
+  await runOps([{ op: 'setDoc', annotation: '' }], { label: '清空整图批注' });
+}
+
 const EDGE_LABELS = { label: '关联线说明', note: '关联线备注', annotation: '关联线批注' };
 let edgeTimer = null;
 
@@ -2342,15 +2421,13 @@ function updateLinkGuess() {
   hint.textContent = `识别为${KIND_LABELS[guessLinkKind(state.linkDraft.target)] ?? '文件'}`;
 }
 
-/* ---- 节点截图（粘贴 / 选文件 / 删除） ---- */
+/* ---- 图片（粘贴 / 选文件 / 展开 / 删除） ---- */
 
 /** 把一段图片数据传到服务端并挂到当前节点上。 */
 async function attachImageFile(file) {
-  const node = state.doc && getNode(state.doc, state.selectedId);
-  if (!node) {
-    toast('先选中一个节点再贴图', { tone: 'warn' });
-    return null;
-  }
+  if (!state.doc) return null;
+  const node = state.selectedId ? getNode(state.doc, state.selectedId) : null;
+  // 没选节点时挂到"整张图"上（全局图片）
   if (!file || !String(file.type).startsWith('image/')) return null;
   const limit = 12 * 1024 * 1024;
   if (file.size > limit) {
@@ -2358,7 +2435,7 @@ async function attachImageFile(file) {
     return null;
   }
   const slug = state.slug;
-  toast('正在保存截图…');
+  toast('正在保存图片…');
   let uploaded;
   try {
     const response = await fetch(`/api/maps/${encodeURIComponent(slug)}/images`, {
@@ -2369,7 +2446,7 @@ async function attachImageFile(file) {
     uploaded = await response.json();
     if (!response.ok) throw new ApiError(uploaded?.message ?? '上传失败', uploaded?.error ?? 'error');
   } catch (error) {
-    toast(error?.message ?? '截图保存失败', { tone: 'error' });
+    toast(error?.message ?? '图片保存失败', { tone: 'error' });
     return null;
   }
   // 图片尺寸（用于占位，量不出来也不影响）
@@ -2385,10 +2462,10 @@ async function attachImageFile(file) {
     width: size.width,
     height: size.height,
   };
-  await runOps([{ op: 'addImage', node: node.id, image }], { label: '添加截图' });
-  const fresh = state.doc && getNode(state.doc, node.id);
-  syncImageSection(fresh ?? node);
-  toast('截图已加到节点上', { tone: 'ok' });
+  const op = node ? { op: 'addImage', node: node.id, image } : { op: 'addImage', image };
+  await runOps([op], { label: node ? '添加图片' : '添加整图图片' });
+  refreshImageSection();
+  toast(node ? '图片已加到节点上' : '图片已加到整张图上', { tone: 'ok' });
   return uploaded;
 }
 
@@ -2419,11 +2496,62 @@ function pickImageFile() {
   input.click();
 }
 
+/** 展开一张图片（可以同时展开多张），状态记在本地。 */
+function expandImage(imageId) {
+  if (!imageId) return;
+  state.expandedImages.add(imageId);
+  saveExpandedImages();
+  refreshImageSection();
+}
+
+/** 点角落收起成小图标。 */
+function collapseImage(imageId) {
+  if (!imageId) return;
+  state.expandedImages.delete(imageId);
+  saveExpandedImages();
+  refreshImageSection();
+}
+
+function saveExpandedImages() {
+  try {
+    localStorage.setItem('mindleaf:expanded-images', JSON.stringify([...state.expandedImages].slice(-50)));
+  } catch {
+    /* 忽略 */
+  }
+}
+
+function loadExpandedImages() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('mindleaf:expanded-images') ?? '[]');
+    state.expandedImages = new Set(Array.isArray(raw) ? raw.filter((item) => typeof item === 'string') : []);
+  } catch {
+    state.expandedImages = new Set();
+  }
+}
+
+/** 重新渲染当前检查器的图片区（节点或整张图）。 */
+function refreshImageSection() {
+  if (!state.doc) return;
+  const list = document.querySelector('.image-list');
+  if (!list) return;
+  const images = state.selectedId
+    ? getNode(state.doc, state.selectedId)?.images ?? []
+    : state.doc.images ?? [];
+  list.innerHTML = images.length
+    ? images.map((image, index) => imageItemHtml(image, index)).join('')
+    : '<p class="image-empty">把图片直接粘到上面的备注框里（⌘V），或者点「选图片…」。</p>';
+  const count = document.querySelector('.image-head .count');
+  if (count) count.textContent = String(images.length);
+}
+
 async function removeImageFromNode(imageId) {
-  const node = state.doc && getNode(state.doc, state.selectedId);
-  if (!node || !imageId) return;
-  await runOps([{ op: 'removeImage', node: node.id, imageId }], { label: '移除截图' });
-  syncImageSection(getNode(state.doc, node.id));
+  if (!state.doc || !imageId) return;
+  const node = state.selectedId ? getNode(state.doc, state.selectedId) : null;
+  const op = node ? { op: 'removeImage', node: node.id, imageId } : { op: 'removeImage', imageId };
+  await runOps([op], { label: '移除图片' });
+  state.expandedImages.delete(imageId);
+  saveExpandedImages();
+  refreshImageSection();
 }
 
 /** 点缩略图看大图（复用预览抽屉不合适，直接用浏览器新标签）。 */
@@ -2581,11 +2709,20 @@ async function handleInspectorAction(act, element) {
     case 'annotation-clear':
       clearAnnotation();
       break;
+    case 'doc-annotation-clear':
+      clearDocAnnotation();
+      break;
     case 'start-link':
       startLink();
       break;
     case 'image-pick':
       pickImageFile();
+      break;
+    case 'image-expand':
+      expandImage(element.dataset.imageId);
+      break;
+    case 'image-collapse':
+      collapseImage(element.dataset.imageId);
       break;
     case 'image-remove':
       removeImageFromNode(element.dataset.imageId);
@@ -3218,7 +3355,7 @@ function bindEvents() {
   inspector.addEventListener('paste', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
-    if (target.id !== 'insp-note' && target.id !== 'insp-annotation') return;
+    if (!['insp-note', 'insp-annotation', 'doc-note', 'doc-annotation'].includes(target.id)) return;
     const file = imageFromClipboard(event);
     if (!file) return;
     event.preventDefault();
@@ -3230,6 +3367,8 @@ function bindEvents() {
     if (target.id === 'edge-label') scheduleEdgeFieldSave('label', target.value);
     else if (target.id === 'edge-note') scheduleEdgeFieldSave('note', target.value);
     else if (target.id === 'edge-annotation') scheduleEdgeFieldSave('annotation', target.value);
+    else if (target.id === 'doc-note') scheduleDocNoteSave(target.value);
+    else if (target.id === 'doc-annotation') scheduleDocAnnotationSave(target.value);
     else if (target.id === 'insp-note') scheduleNoteSave(target.value);
     else if (target.id === 'insp-annotation') scheduleAnnotationSave(target.value);
     else if (target.id === 'link-target') {
@@ -3261,13 +3400,25 @@ function bindEvents() {
       updateTypography(target.dataset.field, target.value);
       return;
     }
-    if (target.id === 'insp-text') commitInspectorText(target.value);
+    if (target.id === 'doc-note') saveDocNoteNow(target.value);
+    else if (target.id === 'doc-annotation') saveDocAnnotationNow(target.value);
+    else if (target.id === 'insp-text') commitInspectorText(target.value);
     else if (target.id === 'insp-note') saveNoteNow(target.value);
     else if (target.id === 'insp-annotation') saveAnnotationNow(target.value);
     else if (target.id === 'link-kind') state.linkDraft.kind = target.value;
   });
   inspector.addEventListener('focusout', () => {
     flushEdgeSaves();
+    if (docNoteTimer) {
+      clearTimeout(docNoteTimer);
+      docNoteTimer = null;
+      saveDocNoteNow(document.querySelector('#doc-note')?.value ?? '');
+    }
+    if (docAnnotationTimer) {
+      clearTimeout(docAnnotationTimer);
+      docAnnotationTimer = null;
+      saveDocAnnotationNow(document.querySelector('#doc-annotation')?.value ?? '');
+    }
     setTimeout(() => {
       if (!isInspectorTyping() && state.doc) renderInspector();
     }, 0);
@@ -3733,6 +3884,7 @@ function initLayout() {
   }
   $('#app').classList.toggle('sidebar-collapsed', sidebarCollapsed);
   $('#app').classList.toggle('inspector-collapsed', inspectorCollapsed);
+  loadExpandedImages();
   applyPanelWidths();
   applyPanelZoom(readUiPref('ui-scale', 1));
   initResizers();

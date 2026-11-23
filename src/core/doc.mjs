@@ -360,6 +360,14 @@ export function normalizeDoc(input) {
     doc.edges.push(edge);
   }
 
+  // ---- 整张图的备注 / 批注 / 图片（"全局说明"用） ----
+  const docNote = clampString(input.note).trim();
+  if (docNote) doc.note = docNote;
+  const docAnnotation = clampString(input.annotation).trim().slice(0, ANNOTATION_MAX);
+  if (docAnnotation) doc.annotation = docAnnotation;
+  const docImages = normalizeImages(input.images);
+  if (docImages.length) doc.images = docImages;
+
   const journalMax = doc.journal.reduce((max, entry) => Math.max(max, entry.rev), 0);
   doc.rev = Math.max(doc.rev, journalMax);
   doc.updatedAt = isoOr(doc.updatedAt);
@@ -483,7 +491,7 @@ export function docStats(doc) {
   for (const { depth } of eachNode(doc)) maxDepth = Math.max(maxDepth, depth);
   const collapsed = doc.nodes.filter((n) => n.collapsed).length;
   const annotations = doc.nodes.filter((n) => n.annotation).length;
-  const images = doc.nodes.reduce((sum, n) => sum + (n.images?.length ?? 0), 0);
+  const images = doc.nodes.reduce((sum, n) => sum + (n.images?.length ?? 0), 0) + (doc.images?.length ?? 0);
   return { nodes: doc.nodes.length, edges: doc.edges.length, maxDepth, collapsed, annotations, images };
 }
 
@@ -526,12 +534,15 @@ export function edgeAnnotationsOf(doc) {
     .map((edge) => ({ id: edge.id, from: edge.from, to: edge.to, label: edge.label ?? '', annotation: edge.annotation }));
 }
 
-/** 所有带批注的节点（AI 接手时先看这个），按树的顺序返回。 */
+/** 所有带批注的节点（AI 接手时先看这个），按树的顺序返回；图级批注排在最前。 */
 export function annotationsOf(doc) {
-  return eachNode(doc)
-    .map((item) => item.node)
-    .filter((node) => node.annotation)
-    .map((node) => ({ id: node.id, text: node.text, annotation: node.annotation }));
+  const list = [];
+  if (doc.annotation) list.push({ id: '@map', text: doc.title, annotation: doc.annotation, map: true });
+  for (const { node } of eachNode(doc)) {
+    if (!node.annotation) continue;
+    list.push({ id: node.id, text: node.text, annotation: node.annotation });
+  }
+  return list;
 }
 
 /** 校验但不修复；返回问题列表（空数组 = 没问题）。 */

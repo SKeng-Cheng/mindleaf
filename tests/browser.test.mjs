@@ -615,6 +615,120 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：没选中节点时可以写整图备注/批注，图片默认收成小图标、可展开多张', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  // 先取消选中（Escape），露出整图面板
+  const panel = await browser.evaluate(`(async () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return {
+      hasDocNote: !!document.querySelector('#doc-note'),
+      hasDocAnnotation: !!document.querySelector('#doc-annotation'),
+      hasImageSection: !!document.querySelector('.image-head'),
+      placeholder: document.querySelector('#doc-note')?.placeholder ?? '',
+    };
+  })()`);
+  assert.equal(panel.hasDocNote, true, '没选中节点时应能写整图备注');
+  assert.equal(panel.hasDocAnnotation, true, '没选中节点时应能写整图批注');
+  assert.equal(panel.hasImageSection, true, '没选中节点时应能贴整图图片');
+
+  // 写整图备注 + 批注
+  await browser.evaluate(`(async () => {
+    const note = document.querySelector('#doc-note');
+    note.value = '整张图的说明：先看第三章';
+    note.dispatchEvent(new Event('input', { bubbles: true }));
+    note.blur();
+    const ann = document.querySelector('#doc-annotation');
+    ann.value = '把第三章拆细一点';
+    ann.dispatchEvent(new Event('input', { bubbles: true }));
+    ann.blur();
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+  })()`);
+  let doc = session.store.read(slug).doc;
+  assert.equal(doc.note, '整张图的说明：先看第三章');
+  assert.equal(doc.annotation, '把第三章拆细一点');
+
+  // 顶栏标题带蓝点（表示整图有批注）
+  const badge = await browser.evaluate(`document.querySelector('#doc-title').classList.contains('has-annotation')`);
+  assert.equal(badge, true, '整图有批注时标题应带标记');
+
+  // 贴两张图到整张图
+  const pasted = await browser.evaluate(`(async () => {
+    const makeImage = async (w, h, color) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = color; ctx.fillRect(0, 0, w, h);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      return new File([blob], 'shot.png', { type: 'image/png' });
+    };
+    for (const color of ['#2563eb', '#10b981']) {
+      const file = await makeImage(160, 100, color);
+      const data = new DataTransfer();
+      data.items.add(file);
+      const note = document.querySelector('#doc-note');
+      note.focus();
+      note.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    return {
+      icons: document.querySelectorAll('.image-item.is-collapsed').length,
+      expanded: document.querySelectorAll('.image-item.is-expanded').length,
+      count: document.querySelector('.image-head .count')?.textContent,
+    };
+  })()`);
+  assert.equal(pasted.icons, 2, '两张图默认都收成小图标');
+  assert.equal(pasted.expanded, 0);
+  assert.equal(pasted.count, '2');
+
+  // 展开第一张 → 只展开它
+  const one = await browser.evaluate(`(async () => {
+    document.querySelector('.image-icon').click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      icons: document.querySelectorAll('.image-item.is-collapsed').length,
+      expanded: document.querySelectorAll('.image-item.is-expanded').length,
+    };
+  })()`);
+  assert.equal(one.expanded, 1);
+  assert.equal(one.icons, 1);
+
+  // 再展开第二张 → 两张同时展开
+  const two = await browser.evaluate(`(async () => {
+    document.querySelector('.image-icon').click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      icons: document.querySelectorAll('.image-item.is-collapsed').length,
+      expanded: document.querySelectorAll('.image-item.is-expanded').length,
+    };
+  })()`);
+  assert.equal(two.expanded, 2, '展开的多张可以同时存在');
+
+  // 点右下角收起一张
+  const collapsed = await browser.evaluate(`(async () => {
+    document.querySelector('.image-collapse').click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      icons: document.querySelectorAll('.image-item.is-collapsed').length,
+      expanded: document.querySelectorAll('.image-item.is-expanded').length,
+    };
+  })()`);
+  assert.equal(collapsed.icons, 1);
+  assert.equal(collapsed.expanded, 1);
+
+  doc = session.store.read(slug).doc;
+  assert.equal(doc.images?.length, 2, '两张图应挂在整张图上，而不是节点上');
+  assert.ok(fs.existsSync(path.join(session.store.projectDir, doc.images[0].path)));
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：备注框里粘贴截图会挂到节点上', { skip, timeout: 120000 }, async (t) => {
   const { session, slug } = await bootProject();
   const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
@@ -653,22 +767,31 @@ test('浏览器：备注框里粘贴截图会挂到节点上', { skip, timeout: 
     note.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    const img = document.querySelector('.image-thumb img');
+    const icon = document.querySelector('.image-icon img');
+    const collapsedFirst = !!document.querySelector('.image-item.is-collapsed');
+    // 点一下小图标展开
+    document.querySelector('.image-icon')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const thumb = document.querySelector('.image-thumb img');
     return {
       hasSection,
       nodeId,
       items: document.querySelectorAll('.image-item').length,
-      src: img?.getAttribute('src') ?? '',
-      loaded: img?.naturalWidth ?? 0,
+      collapsedFirst,
+      src: icon?.getAttribute('src') ?? '',
+      loaded: icon?.naturalWidth ?? 0,
+      expandedSrc: thumb?.getAttribute('src') ?? '',
       count: document.querySelector('.image-head .count')?.textContent,
       canvasMark: document.querySelectorAll('#canvas-stage [data-images="1"]').length,
       noteKept: note.isConnected,
     };
   })()`);
-  assert.equal(result.hasSection, true, '检查器里应有截图区');
-  assert.equal(result.items, 1, '粘贴后应出现一张缩略图');
-  assert.match(result.src, /^\/api\/assets\?path=/, '缩略图走 /api/assets');
-  assert.ok(result.loaded > 0, '缩略图应真的加载出来');
+  assert.equal(result.hasSection, true, '检查器里应有图片区');
+  assert.equal(result.items, 1, '粘贴后应出现一张图');
+  assert.equal(result.collapsedFirst, true, '新图默认是小图标');
+  assert.match(result.src, /^\/api\/assets\?path=/, '小图标走 /api/assets');
+  assert.ok(result.loaded > 0, '小图标应真的加载出来');
+  assert.match(result.expandedSrc, /^\/api\/assets\?path=/, '点开后是大图');
   assert.equal(result.count, '1');
   assert.equal(result.canvasMark, 1, '画布上该节点应出现附图标记');
   assert.equal(result.noteKept, true, '贴图不应把备注框弄没（不能整块重绘）');

@@ -29,7 +29,7 @@
 | `apply_ops` | **改多个点就用它**，一批 op 原子生效 |
 | `add_node` / `update_node` / `remove_node` / `move_node` | 单点修改；`update_node` 支持 `color` / `textColor` / `lineColor` / `fontSize` / `font` / `boxWidth` / `boxHeight` / `annotation` / `images` |
 | `add_edge` / `update_edge` / `remove_edge` | 关联线：新建 / 改说明·颜色·备注·批注 / 删除（id 用 `read_map` 里的关联线清单） |
-| `update_map` | 改标题 / 布局 / 主题 / 标签（`tags`） |
+| `update_map` | 改标题 / 布局 / 主题 / 标签（`tags`）/ 整图备注与批注（`note` / `annotation`） |
 | `list_tags` | 看所有标签及各自数量 |
 | `list_annotations` | **看人类给这个节点留的批注（修改要求）**，不给 map 就扫全部 |
 | `list_fonts` | 看可用字体键名（系统字体，配色用） |
@@ -104,7 +104,9 @@ $MM edge-set 项目规划 e_ab12c --label 影响排期 --annotation "这条依�
 - `links[].kind`：`file`（工作区文件，相对路径以项目根的 `workspaceDir` 为准）、`url`、`code`（可带 `#L10-L20` 行号）。
 - `annotation` 是人类写给 agent 的修改要求（画布上蓝色小点、大纲里 ⚑），处理完要清空，
   清空后标记自动消失。`note` 是人给自己看的备注，画布上不显示标记。
-- `images` 是贴在节点上的截图：只存相对项目根的路径（如 `maps/.assets/<slug>/x.png`），
+- **整张图也能有** `note` / `annotation` / `images`（在文档根上，不在节点里）：给 AI 的整图批注
+  id 记为 `@map`，处理完用 `update_map` 的 `annotation: ""` 清掉。
+- `images` 是贴在节点（或整张图）上的图片：只存相对项目根的路径（如 `maps/.assets/<slug>/x.png`），
   文件本身在磁盘上。`read_map` 的 outline 会用 `🖼` 列出这些路径，需要看图时直接读文件。
   加/删用 `apply_ops` 的 `addImage` / `removeImage`，不要整组覆盖 `images`。
 

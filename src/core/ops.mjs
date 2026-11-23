@@ -317,28 +317,31 @@ export function removeEdge(doc, patch = {}) {
 
 /** 给节点加一张附图（截图粘贴走这里）。 */
 export function addImage(doc, patch = {}) {
-  const node = need(doc, patch.node ?? patch.id, '节点');
+  // 不给 node 就是挂在"整张图"上（全局图片）
+  const ref = patch.node ?? patch.id;
+  const owner = ref == null || ref === '@map' ? doc : need(doc, ref, '节点');
   const [image] = normalizeImages([patch.image ?? patch]);
   if (!image) throw new DocError('缺少附图路径', 'invalid_argument');
-  const images = node.images ?? [];
-  if (images.length >= IMAGES_MAX) throw new DocError(`一个节点最多挂 ${IMAGES_MAX} 张图`, 'invalid_argument');
+  const images = owner.images ?? [];
+  if (images.length >= IMAGES_MAX) throw new DocError(`最多挂 ${IMAGES_MAX} 张图`, 'invalid_argument');
   if (!images.some((item) => item.id === image.id)) {
-    node.images = [...images, image];
+    owner.images = [...images, image];
   }
   return image;
 }
 
 /** 删掉节点上的某张附图。 */
 export function removeImage(doc, patch = {}) {
-  const node = need(doc, patch.node ?? patch.id, '节点');
+  const ref = patch.node ?? patch.id;
+  const owner = ref == null || ref === '@map' ? doc : need(doc, ref, '节点');
   const imageId = String(patch.imageId ?? patch.image ?? '').trim();
   if (!imageId) throw new DocError('缺少附图 id', 'invalid_argument');
-  const before = node.images ?? [];
+  const before = owner.images ?? [];
   const rest = before.filter((item) => item.id !== imageId);
-  if (rest.length === before.length) throw new DocError(`节点上没有这张图: ${imageId}`, 'not_found');
-  if (rest.length) node.images = rest;
-  else delete node.images;
-  return { nodeId: node.id, imageId };
+  if (rest.length === before.length) throw new DocError(`这里没有这张图: ${imageId}`, 'not_found');
+  if (rest.length) owner.images = rest;
+  else delete owner.images;
+  return { nodeId: owner.id ?? '@map', imageId };
 }
 
 /** 设置文档标题/布局/主题。 */
@@ -356,6 +359,14 @@ export function setDoc(doc, patch = {}) {
     if (!['light', 'dark'].includes(patch.theme)) throw new DocError(`未知主题: ${patch.theme}`, 'invalid_argument');
     doc.settings.theme = patch.theme;
   }
+  // 整张图的备注 / 批注：空串即清除
+  for (const key of ['note', 'annotation']) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    const value = typeof patch[key] === 'string' ? patch[key].trim() : '';
+    if (value) doc[key] = key === 'annotation' ? value.slice(0, ANNOTATION_MAX) : value;
+    else delete doc[key];
+  }
+
   // 标签：传数组或 "a, b" 字符串都行；传空数组表示清空
   if (Object.prototype.hasOwnProperty.call(patch, 'tags')) doc.tags = normalizeTags(patch.tags);
   return doc;

@@ -300,6 +300,37 @@ test('MCP: 字号、字体、框尺寸与 list_fonts', async (t) => {
   assert.match(blocked.text, /只能改颜色/);
 });
 
+test('MCP: 整张图的备注 / 批注 / 图片', async (t) => {
+  const projectDir = tempProject();
+  const mcp = await startMcp(projectDir);
+  t.after(() => mcp.close());
+  await mcp.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+  await mcp.callTool('mindleaf_create_map', { title: '整图', rootText: '根' });
+
+  // 用 update_map 写整图备注 + 批注
+  const wrote = await mcp.callTool('mindleaf_update_map', {
+    map: '整图',
+    note: '这是整张图的说明',
+    annotation: '把第三章拆细',
+  });
+  assert.equal(wrote.isError, false, wrote.text);
+
+  // read_map 头部能看到
+  const read = await mcp.callTool('mindleaf_read_map', { map: '整图' });
+  assert.match(read.text, /整图批注: 把第三章拆细/);
+  assert.match(read.text, /整图备注: 这是整张图的说明/);
+
+  // list_annotations 里 @map 出现，且提示用 update_map 清
+  const list = await mcp.callTool('mindleaf_list_annotations', { map: '整图' });
+  assert.match(list.text, /@map/);
+  assert.match(list.text, /update_map/);
+
+  // 清掉
+  await mcp.callTool('mindleaf_update_map', { map: '整图', annotation: '', note: '' });
+  const after = await mcp.callTool('mindleaf_read_map', { map: '整图' });
+  assert.doesNotMatch(after.text, /整图批注/);
+});
+
 test('MCP: 关联线可以改说明/颜色/备注/批注、能列出、能删', async (t) => {
   const projectDir = tempProject();
   const mcp = await startMcp(projectDir);

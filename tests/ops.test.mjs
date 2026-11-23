@@ -167,6 +167,32 @@ test('addEdge / updateEdge 支持颜色、备注、批注，空串即清除', ()
   assert.equal(doc.edges[0].to, a.id);
 });
 
+test('setDoc 能写整图备注和批注，空串即清除', () => {
+  const { doc } = base();
+  setDoc(doc, { note: '全局说明', annotation: '整图批注' });
+  assert.equal(doc.note, '全局说明');
+  assert.equal(doc.annotation, '整图批注');
+  setDoc(doc, { note: '', annotation: '' });
+  assert.equal(doc.note, undefined);
+  assert.equal(doc.annotation, undefined);
+});
+
+test('不给 node 的 addImage / removeImage 作用在整张图上', () => {
+  const { doc, a } = base();
+  const image = addImage(doc, { image: { path: '.assets/t/map.png' } });
+  assert.equal(doc.images.length, 1, '图级图片');
+  assert.equal(getNode(doc, a.id).images, undefined, '不会跑到节点上');
+
+  removeImage(doc, { imageId: image.id });
+  assert.equal(doc.images, undefined);
+
+  // 显式 @map 也行
+  const again = addImage(doc, { node: '@map', image: { path: '.assets/t/map2.png' } });
+  assert.equal(doc.images.length, 1);
+  removeImage(doc, { node: '@map', imageId: again.id });
+  assert.equal(doc.images, undefined);
+});
+
 test('addImage / removeImage：单张添加与删除，不覆盖已有的', () => {
   const { doc, a } = base();
   const first = addImage(doc, { node: a.id, image: { path: '.assets/t/1.png', width: 100, height: 80 } });

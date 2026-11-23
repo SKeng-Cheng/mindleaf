@@ -306,6 +306,26 @@ test('节点附图会出现在 outline 里（AI 能看到图片路径）', () =>
   assert.equal(docStats(doc).images, 1);
 });
 
+test('整张图也能有备注 / 批注 / 图片', () => {
+  const doc = normalizeDoc({
+    title: '整图',
+    note: '  全局说明  ',
+    annotation: ' 整图批注 ',
+    images: [{ path: '.assets/t/g.png', name: '总览' }, { path: '../bad.png' }],
+    nodes: [{ id: 'root', parent: null, text: '根' }],
+  });
+  assert.equal(doc.note, '全局说明');
+  assert.equal(doc.annotation, '整图批注');
+  assert.equal(doc.images.length, 1, '非法路径要丢掉');
+  assert.equal(docStats(doc).images, 1, '统计要把图级图片算进去');
+
+  // annotationsOf 里图级批注排在最前，id 是 @map
+  const list = annotationsOf(doc);
+  assert.equal(list[0].id, '@map');
+  assert.equal(list[0].map, true);
+  assert.equal(list[0].annotation, '整图批注');
+});
+
 test('recordChange 递增 rev 并裁剪 journal', () => {
   const doc = createDoc({ title: 'x' });
   for (let i = 0; i < 260; i += 1) recordChange(doc, { by: 'test', action: 'touch', summary: `#${i}` });

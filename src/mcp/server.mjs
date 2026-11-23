@@ -201,7 +201,9 @@ export function createTools(store) {
         return toolResult(args.map ? '这张图上没有待处理的批注。' : '所有导图都没有待处理的批注。');
       }
       return toolResult(
-        `共 ${blocks.length} 张图有待处理批注：\n\n${blocks.join('\n\n')}\n\n按批注改完之后，用 mindleaf_update_node 把对应节点的 annotation 置空，并在 note 里写一句改了什么。`,
+        `共 ${blocks.length} 张图有待处理批注：\n\n${blocks.join('\n\n')}\n\n` +
+          '按批注改完之后：节点上的用 mindleaf_update_node 把 annotation 置空，' +
+          '整张图的（id 是 @map）用 mindleaf_update_map 置空；都在 note 里写一句改了什么。',
       );
     },
   );
@@ -277,12 +279,19 @@ export function createTools(store) {
       const format = args.format ?? 'outline';
       const stats = docStats(doc);
       const tagText = (doc.tags ?? []).length ? `，标签 ${doc.tags.join('、')}` : '';
-      const header = `# ${doc.title}  (slug: ${slug}, rev ${doc.rev}, ${stats.nodes} 节点, 深 ${stats.maxDepth}${tagText})\n文件: ${file}\n`;
+      const mapBits = [];
+      if (doc.annotation) mapBits.push(`⚑ 整图批注: ${doc.annotation.replace(/\n/g, ' ')}`);
+      if (doc.note) mapBits.push(`整图备注: ${doc.note.replace(/\n/g, ' ').slice(0, 300)}`);
+      for (const image of doc.images ?? []) mapBits.push(`🖼 ${image.path}${image.name ? ` (${image.name})` : ''}`);
+      const mapBlock = mapBits.length ? `${mapBits.join('\n')}\n` : '';
+      const header = `# ${doc.title}  (slug: ${slug}, rev ${doc.rev}, ${stats.nodes} 节点, 深 ${stats.maxDepth}${tagText})\n文件: ${file}\n${mapBlock}`;
       if (format === 'json') return toolResult(header + JSON.stringify(doc, null, 2));
       if (format === 'markdown') return toolResult(header + '\n' + toMarkdown(doc));
       const hints = annotationsOf(doc);
       const hintLine = hints.length
-        ? `\n⚠️ 有 ${hints.length} 条批注等你处理（节点 ${hints.map((item) => item.id).join(', ')}），先看 ⚑ 标记再动手。\n`
+        ? `\n⚠️ 有 ${hints.length} 条批注等你处理（${hints
+            .map((item) => (item.map ? '整张图 @map' : item.id))
+            .join(', ')}），先看 ⚑ 标记再动手。\n`
         : '';
       const text = outline(doc, {
         withNotes: args.withNotes === true,
@@ -599,7 +608,7 @@ Example: {"ops":[{"op":"addNode","parent":"n_root","text":"第 1 章"},{"op":"ad
     {
       name: 'mindleaf_update_map',
       description:
-        'Change map-level settings: title, layout (right/left/both), theme (light/dark) or tags (an array; empty array clears them).',
+        'Change map-level settings: title, layout (right/left/both), theme (light/dark), tags (an array; empty array clears them), or the map-level note / annotation (empty string clears them).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -616,10 +625,13 @@ Example: {"ops":[{"op":"addNode","parent":"n_root","text":"第 1 章"},{"op":"ad
     async (args) => {
       const patch = { op: 'setDoc', title: args.title, layout: args.layout, theme: args.theme };
       if (Array.isArray(args.tags)) patch.tags = args.tags;
+      if (args.note !== undefined) patch.note = args.note;
+      if (args.annotation !== undefined) patch.annotation = args.annotation;
       const { doc: next } = store.applyOps(args.map, [patch], { by: 'agent' });
       const tags = (next.tags ?? []).length ? next.tags.join('、') : '（无）';
       return toolResult(
-        `已更新导图设置：「${next.title}」，layout=${next.settings.layout}，theme=${next.settings.theme}，标签=${tags}。\n${summarizeAfterWrite(next, '设置')}`,
+        `已更新导图设置：「${next.title}」，layout=${next.settings.layout}，theme=${next.settings.theme}，标签=${tags}` +
+          `${next.note ? `，整图备注 ${next.note.length} 字` : ''}${next.annotation ? '，整图批注已更新' : ''}。\n${summarizeAfterWrite(next, '设置')}`,
       );
     },
   );
