@@ -61,6 +61,7 @@ export const THEMES = {
     nodeStroke: '#d8e0ea',
     relation: '#f59e0b',
     annotation: '#2563eb',
+    image: '#0d9488',
     danger: '#dc2626',
   },
   dark: {
@@ -79,6 +80,7 @@ export const THEMES = {
     nodeStroke: '#2b3f5e',
     relation: '#fbbf24',
     annotation: '#60a5fa',
+    image: '#2dd4bf',
     danger: '#f87171',
   },
 };
@@ -276,6 +278,7 @@ export function layoutDoc(doc, options = {}) {
       lineColor: lineColorOf.get(node.id) ?? null,
       links: node.links ?? [],
       hasAnnotation: Boolean(node.annotation),
+      hasImages: Boolean(node.images?.length),
       hasNote: Boolean(node.note),
       collapsed: isCollapsed(node),
       expandable: (children.get(node.id) ?? []).length > 0,

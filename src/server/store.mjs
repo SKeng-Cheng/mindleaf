@@ -132,6 +132,45 @@ export class Store {
     return path.join(this.mapsDir, '.history');
   }
 
+  /** 附图目录：<mapsDir>/.assets/<slug>/ */
+  get assetsDir() {
+    return path.join(this.mapsDir, '.assets');
+  }
+
+  assetsDirFor(slug) {
+    return path.join(this.assetsDir, slug);
+  }
+
+  /**
+   * 保存一张附图，返回 { path, bytes }。
+   * path 是相对项目根的路径，写进节点上。
+   */
+  saveImage(slug, buffer, extension = 'png') {
+    const ext = /^[a-z0-9]{2,5}$/i.test(extension) ? extension.toLowerCase() : 'png';
+    const dir = this.assetsDirFor(slug);
+    fs.mkdirSync(dir, { recursive: true });
+    let name;
+    do {
+      name = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    } while (fs.existsSync(path.join(dir, name)));
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, buffer);
+    return {
+      path: path.relative(this.projectDir, file).split(path.sep).join('/'),
+      bytes: buffer.length,
+    };
+  }
+
+  /** 把导图里的相对图片路径解析成绝对路径（并挡住路径穿越）。 */
+  resolveImage(relPath) {
+    const text = String(relPath ?? '').replace(/\\/g, '/');
+    if (!text || text.startsWith('/') || text.split('/').includes('..')) return null;
+    const file = path.resolve(this.projectDir, text);
+    const root = path.resolve(this.projectDir) + path.sep;
+    if (!file.startsWith(root)) return null;
+    return fs.existsSync(file) ? file : null;
+  }
+
   #ensureDirs() {
     fs.mkdirSync(this.mapsDir, { recursive: true });
     fs.mkdirSync(this.historyDir, { recursive: true });
@@ -418,6 +457,7 @@ export class Store {
     return this.#withFileLock(file, () => {
       fs.rmSync(file, { force: true });
       fs.rmSync(path.join(this.historyDir, slug), { recursive: true, force: true });
+      fs.rmSync(this.assetsDirFor(slug), { recursive: true, force: true });
       this.#emit({ type: 'delete', slug });
       return { slug, deleted: true };
     });

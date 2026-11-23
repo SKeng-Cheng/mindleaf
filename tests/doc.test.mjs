@@ -7,6 +7,9 @@ import {
   normalizeHexColor,
   annotationsOf,
   edgeAnnotationsOf,
+  normalizeImages,
+  normalizeImagePath,
+  IMAGES_MAX,
   ANNOTATION_MAX,
   tagsToText,
   FONTS,
@@ -119,7 +122,7 @@ test('遍历与统计', () => {
   assert.equal(isDescendant(doc, 'root', 'a1'), true);
   assert.equal(isDescendant(doc, 'a1', 'root'), false);
   assert.equal(rootOf(doc).id, 'root');
-  assert.deepEqual(docStats(doc), { nodes: 4, edges: 0, maxDepth: 2, collapsed: 1, annotations: 0 });
+  assert.deepEqual(docStats(doc), { nodes: 4, edges: 0, maxDepth: 2, collapsed: 1, annotations: 0, images: 0 });
 });
 
 test('outline 带 id 与链接', () => {
@@ -268,6 +271,41 @@ test('关联线支持颜色/备注/批注，归一化会保留', () => {
   assert.equal(second.color, undefined, '非法颜色丢掉');
   assert.equal(second.label, undefined);
   assert.deepEqual(edgeAnnotationsOf(doc).map((item) => item.id), ['e1']);
+});
+
+test('附图：只收相对路径、挡住路径穿越、超量截断', () => {
+  assert.equal(normalizeImagePath('.assets/a/b.png'), '.assets/a/b.png');
+  assert.equal(normalizeImagePath('  .assets\\a\\b.png  '), '.assets/a/b.png', '反斜杠归一化成 /');
+  assert.equal(normalizeImagePath('/etc/passwd'), '', '绝对路径拒绝');
+  assert.equal(normalizeImagePath('../secret.png'), '', '.. 拒绝');
+  assert.equal(normalizeImagePath('a/../../b.png'), '', '中间夹 .. 也拒绝');
+  assert.equal(normalizeImagePath('C:/x.png'), '', 'Windows 盘符拒绝');
+  assert.equal(normalizeImagePath(''), '');
+
+  const images = normalizeImages([
+    { path: '.assets/t/1.png', width: 800, height: 600, name: ' 截图 ' },
+    { path: '../evil.png' },
+    { path: '.assets/t/2.png', width: 'abc' },
+    { notAnImage: true },
+  ]);
+  assert.equal(images.length, 2);
+  assert.equal(images[0].name, '截图');
+  assert.equal(images[0].width, 800);
+  assert.equal(images[1].width, undefined, '非法宽度丢掉');
+  assert.ok(images[0].id && images[1].id, '每张图要有 id');
+  assert.notEqual(images[0].id, images[1].id);
+
+  const many = normalizeImages(Array.from({ length: IMAGES_MAX + 5 }, (_, i) => ({ path: `.assets/t/${i}.png` })));
+  assert.equal(many.length, IMAGES_MAX, '超量要截断');
+});
+
+test('节点附图会出现在 outline 里（AI 能看到图片路径）', () => {
+  const doc = createDoc({ title: 't', rootText: '根' });
+  const a = addNode(doc, { parent: 'root', text: 'A' });
+  updateNode(doc, { id: a.id, images: [{ path: '.assets/t/a.png', name: '架构图' }] });
+  const text = outline(doc);
+  assert.match(text, /🖼 \.assets\/t\/a\.png \(架构图\)/);
+  assert.equal(docStats(doc).images, 1);
 });
 
 test('recordChange 递增 rev 并裁剪 journal', () => {

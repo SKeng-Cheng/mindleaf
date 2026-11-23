@@ -615,6 +615,83 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：备注框里粘贴截图会挂到节点上', { skip, timeout: 120000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  const result = await browser.evaluate(`(async () => {
+    // 选中一个节点
+    const groups = [...document.querySelectorAll('#canvas-stage g[data-node-id]')];
+    const target = groups[1];
+    const rect = target.querySelector('rect').getBoundingClientRect();
+    const opts = { bubbles: true, clientX: rect.x + 10, clientY: rect.y + rect.height / 2, button: 0, pointerId: 1 };
+    target.dispatchEvent(new PointerEvent('pointerdown', opts));
+    target.dispatchEvent(new PointerEvent('pointerup', opts));
+    target.dispatchEvent(new MouseEvent('click', opts));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    const nodeId = target.dataset.nodeId;
+    const hasSection = !!document.querySelector('.image-head');
+
+    // 造一张 PNG，模拟剪贴板里的截图
+    const canvas = document.createElement('canvas');
+    canvas.width = 120;
+    canvas.height = 80;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#2563eb';
+    ctx.fillRect(0, 0, 120, 80);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const file = new File([blob], 'screenshot.png', { type: 'image/png' });
+    const data = new DataTransfer();
+    data.items.add(file);
+    const note = document.querySelector('#insp-note');
+    note.focus();
+    note.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    const img = document.querySelector('.image-thumb img');
+    return {
+      hasSection,
+      nodeId,
+      items: document.querySelectorAll('.image-item').length,
+      src: img?.getAttribute('src') ?? '',
+      loaded: img?.naturalWidth ?? 0,
+      count: document.querySelector('.image-head .count')?.textContent,
+      canvasMark: document.querySelectorAll('#canvas-stage [data-images="1"]').length,
+      noteKept: note.isConnected,
+    };
+  })()`);
+  assert.equal(result.hasSection, true, '检查器里应有截图区');
+  assert.equal(result.items, 1, '粘贴后应出现一张缩略图');
+  assert.match(result.src, /^\/api\/assets\?path=/, '缩略图走 /api/assets');
+  assert.ok(result.loaded > 0, '缩略图应真的加载出来');
+  assert.equal(result.count, '1');
+  assert.equal(result.canvasMark, 1, '画布上该节点应出现附图标记');
+  assert.equal(result.noteKept, true, '贴图不应把备注框弄没（不能整块重绘）');
+
+  // 服务端确实存下来了
+  const doc = session.store.read(slug).doc;
+  const node = doc.nodes.find((item) => item.id === result.nodeId);
+  assert.equal(node.images?.length, 1, '节点上应有一张附图');
+  assert.ok(fs.existsSync(path.join(session.store.projectDir, node.images[0].path)), '图片文件应落盘');
+
+  // 移除
+  await browser.evaluate(`document.querySelector('.image-del').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  const after = await browser.evaluate(`({
+    items: document.querySelectorAll('.image-item').length,
+    empty: !!document.querySelector('.image-empty'),
+  })`);
+  assert.equal(after.items, 0, '移除后缩略图应消失');
+  assert.equal(after.empty, true, '应回到空状态提示');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：顶栏「分享」按钮给出局域网链接并可复制', { skip, timeout: 90000 }, async (t) => {
   const { session, slug } = await bootProject();
   const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);

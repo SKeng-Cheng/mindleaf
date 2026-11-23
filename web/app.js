@@ -767,6 +767,32 @@ function linkFormHtml() {
     </div>`;
 }
 
+/**
+ * 只重绘"截图"那一块。
+ * 不能整块重绘检查器：粘贴时焦点还在备注框里，整块重绘会把没保存的文字冲掉。
+ */
+function syncImageSection(node) {
+  const list = document.querySelector('.image-list');
+  if (!list || !node) return;
+  const images = node.images ?? [];
+  list.innerHTML = images.length
+    ? images.map((image, index) => imageItemHtml(image, index)).join('')
+    : '<p class="image-empty">把截图直接粘到上面的备注框里（⌘V），或者点「选图片…」。</p>';
+  const count = document.querySelector('.image-head .count');
+  if (count) count.textContent = String(images.length);
+}
+
+function imageItemHtml(image, index) {
+  const src = `/api/assets?path=${encodeURIComponent(image.path)}`;
+  return `
+    <div class="image-item" data-image-id="${esc(image.id)}">
+      <button type="button" class="image-thumb" data-act="image-open" data-index="${index}" title="点击看大图">
+        <img src="${src}" alt="${esc(image.name ?? '截图')}" loading="lazy">
+      </button>
+      <button type="button" class="image-del" data-act="image-remove" data-image-id="${esc(image.id)}" title="移除这张图" aria-label="移除">${ICON.x}</button>
+    </div>`;
+}
+
 function nodeInspectorHtml(node) {
   const links = node.links ?? [];
   const kids = childrenOf(state.doc, node.id).length;
@@ -780,6 +806,15 @@ function nodeInspectorHtml(node) {
       <section class="field">
         <label class="lab" for="insp-note">备注</label>
         <textarea class="input textarea" id="insp-note" rows="3"${heightStyle('insp-note')} placeholder="补充说明、待办、出处…">${esc(node.note ?? '')}</textarea>
+      </section>
+      <section class="field">
+        <div class="image-head">
+          <span class="lab">截图 <span class="count">${(node.images ?? []).length}</span></span>
+          <button type="button" class="btn ghost xs" data-act="image-pick" title="也可以直接把图片粘到下面的备注框里">选图片…</button>
+        </div>
+        <div class="image-list">${(node.images ?? []).map((image, index) => imageItemHtml(image, index)).join('')}${
+          (node.images ?? []).length ? '' : '<p class="image-empty">把截图直接粘到上面的备注框里（⌘V），或者点「选图片…」。</p>'
+        }</div>
       </section>
       <section class="field">
         <div class="annotation-head">
@@ -2307,6 +2342,96 @@ function updateLinkGuess() {
   hint.textContent = `识别为${KIND_LABELS[guessLinkKind(state.linkDraft.target)] ?? '文件'}`;
 }
 
+/* ---- 节点截图（粘贴 / 选文件 / 删除） ---- */
+
+/** 把一段图片数据传到服务端并挂到当前节点上。 */
+async function attachImageFile(file) {
+  const node = state.doc && getNode(state.doc, state.selectedId);
+  if (!node) {
+    toast('先选中一个节点再贴图', { tone: 'warn' });
+    return null;
+  }
+  if (!file || !String(file.type).startsWith('image/')) return null;
+  const limit = 12 * 1024 * 1024;
+  if (file.size > limit) {
+    toast(`图片太大（${(file.size / 1024 / 1024).toFixed(1)} MB，上限 12 MB）`, { tone: 'error' });
+    return null;
+  }
+  const slug = state.slug;
+  toast('正在保存截图…');
+  let uploaded;
+  try {
+    const response = await fetch(`/api/maps/${encodeURIComponent(slug)}/images`, {
+      method: 'POST',
+      headers: { 'content-type': file.type || 'image/png' },
+      body: file,
+    });
+    uploaded = await response.json();
+    if (!response.ok) throw new ApiError(uploaded?.message ?? '上传失败', uploaded?.error ?? 'error');
+  } catch (error) {
+    toast(error?.message ?? '截图保存失败', { tone: 'error' });
+    return null;
+  }
+  // 图片尺寸（用于占位，量不出来也不影响）
+  const size = await new Promise((resolve) => {
+    const probe = new Image();
+    probe.onload = () => resolve({ width: probe.naturalWidth, height: probe.naturalHeight });
+    probe.onerror = () => resolve({});
+    probe.src = URL.createObjectURL(file);
+  });
+  const image = {
+    path: uploaded.path,
+    name: file.name && file.name !== 'image.png' ? file.name : undefined,
+    width: size.width,
+    height: size.height,
+  };
+  await runOps([{ op: 'addImage', node: node.id, image }], { label: '添加截图' });
+  const fresh = state.doc && getNode(state.doc, node.id);
+  syncImageSection(fresh ?? node);
+  toast('截图已加到节点上', { tone: 'ok' });
+  return uploaded;
+}
+
+/** 从粘贴事件里取图片（截图常见是 image/png 的 File）。 */
+function imageFromClipboard(event) {
+  const items = event.clipboardData?.items ?? [];
+  for (const item of items) {
+    if (item.kind === 'file' && String(item.type).startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) return file;
+    }
+  }
+  const files = [...(event.clipboardData?.files ?? [])];
+  return files.find((file) => String(file.type).startsWith('image/')) ?? null;
+}
+
+/** 选本地图片文件（和粘贴等价）。 */
+function pickImageFile() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.addEventListener('change', async () => {
+    for (const file of input.files ?? []) {
+      await attachImageFile(file);
+    }
+  });
+  input.click();
+}
+
+async function removeImageFromNode(imageId) {
+  const node = state.doc && getNode(state.doc, state.selectedId);
+  if (!node || !imageId) return;
+  await runOps([{ op: 'removeImage', node: node.id, imageId }], { label: '移除截图' });
+  syncImageSection(getNode(state.doc, node.id));
+}
+
+/** 点缩略图看大图（复用预览抽屉不合适，直接用浏览器新标签）。 */
+function openImage(image) {
+  if (!image) return;
+  window.open(`/api/assets?path=${encodeURIComponent(image.path)}`, '_blank', 'noopener');
+}
+
 /* ---- 局域网分享 ---- */
 
 /** 当前导图的分享链接：优先局域网地址，没有就退回本机地址；带上当前导图。 */
@@ -2459,6 +2584,17 @@ async function handleInspectorAction(act, element) {
     case 'start-link':
       startLink();
       break;
+    case 'image-pick':
+      pickImageFile();
+      break;
+    case 'image-remove':
+      removeImageFromNode(element.dataset.imageId);
+      break;
+    case 'image-open': {
+      const image = node?.images?.[Number(element.dataset.index)];
+      openImage(image);
+      break;
+    }
     case 'edge-style':
       updateSelectedEdge({ color: element.dataset.value ?? '' }, element.dataset.value ? '设置关联线颜色' : '清除关联线颜色');
       break;
@@ -3078,6 +3214,17 @@ function bindEvents() {
     event.preventDefault();
     handleInspectorAction(action.dataset.act, action);
   });
+  // 备注/批注框里直接粘贴截图
+  inspector.addEventListener('paste', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.id !== 'insp-note' && target.id !== 'insp-annotation') return;
+    const file = imageFromClipboard(event);
+    if (!file) return;
+    event.preventDefault();
+    attachImageFile(file);
+  });
+
   inspector.addEventListener('input', (event) => {
     const target = event.target;
     if (target.id === 'edge-label') scheduleEdgeFieldSave('label', target.value);

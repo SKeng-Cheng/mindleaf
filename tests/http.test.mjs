@@ -31,6 +31,52 @@ const setup = async () => {
   return { session, base, api, projectDir };
 };
 
+test('HTTP: 附图可以上传、取回，路径穿越被拒，删导图会清掉', async (t) => {
+  const { session, api, projectDir } = await setup();
+  t.after(() => session.close());
+  const created = await api('POST', '/api/maps', { title: '带图', rootText: '根' });
+  const slug = created.json.slug;
+  const nodeId = created.json.doc.nodes[0].id;
+
+  // 1x1 PNG
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const upload = await fetch(`${session.url}/api/maps/${encodeURIComponent(slug)}/images`, {
+    method: 'POST',
+    headers: { 'content-type': 'image/png' },
+    body: png,
+  });
+  assert.equal(upload.status, 200);
+  const saved = await upload.json();
+  assert.match(saved.path, /(^|\/)maps\/\.assets\//, `路径应落在 maps/.assets 下，实际 ${saved.path}`);
+  assert.equal(saved.bytes, png.length);
+
+  // 取回
+  const fetched = await fetch(`${session.url}/api/assets?path=${encodeURIComponent(saved.path)}`);
+  assert.equal(fetched.status, 200);
+  assert.equal(fetched.headers.get('content-type'), 'image/png');
+  assert.equal(Buffer.from(await fetched.arrayBuffer()).length, png.length);
+
+  // 路径穿越 / 不存在的
+  assert.equal((await fetch(`${session.url}/api/assets?path=${encodeURIComponent('../../etc/passwd')}`)).status, 404);
+  assert.equal((await fetch(`${session.url}/api/assets?path=nope.png`)).status, 404);
+
+  // 挂到节点上（走 op）
+  const applied = await api('POST', `/api/maps/${encodeURIComponent(slug)}/ops`, {
+    ops: [{ op: 'addImage', node: nodeId, image: { path: saved.path } }],
+  });
+  assert.equal(applied.status, 200);
+  assert.equal(applied.json.doc.nodes[0].images.length, 1);
+
+  // 删除导图后附图一起没了
+  const assetFile = path.join(projectDir, saved.path);
+  assert.equal(fs.existsSync(assetFile), true);
+  await api('DELETE', `/api/maps/${encodeURIComponent(slug)}`);
+  assert.equal(fs.existsSync(assetFile), false, '删导图应清掉附图');
+});
+
 test('HTTP: /api/state 带上访问入口（顶栏「分享」按钮用）', async (t) => {
   const projectDir = tempProject();
   const session = await startServer({ projectDir, port: 0, host: '127.0.0.1', token: 'sharetoken' });

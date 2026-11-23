@@ -27,7 +27,7 @@
 | `create_map` | 新建（可指定 `template`） |
 | `read_map` | 读：默认 outline（带节点 id），也可 `json` / `markdown` |
 | `apply_ops` | **改多个点就用它**，一批 op 原子生效 |
-| `add_node` / `update_node` / `remove_node` / `move_node` | 单点修改；`update_node` 支持 `color` / `textColor` / `lineColor` / `fontSize` / `font` / `boxWidth` / `boxHeight` / `annotation` |
+| `add_node` / `update_node` / `remove_node` / `move_node` | 单点修改；`update_node` 支持 `color` / `textColor` / `lineColor` / `fontSize` / `font` / `boxWidth` / `boxHeight` / `annotation` / `images` |
 | `add_edge` / `update_edge` / `remove_edge` | 关联线：新建 / 改说明·颜色·备注·批注 / 删除（id 用 `read_map` 里的关联线清单） |
 | `update_map` | 改标题 / 布局 / 主题 / 标签（`tags`） |
 | `list_tags` | 看所有标签及各自数量 |
@@ -104,6 +104,9 @@ $MM edge-set 项目规划 e_ab12c --label 影响排期 --annotation "这条依�
 - `links[].kind`：`file`（工作区文件，相对路径以项目根的 `workspaceDir` 为准）、`url`、`code`（可带 `#L10-L20` 行号）。
 - `annotation` 是人类写给 agent 的修改要求（画布上蓝色小点、大纲里 ⚑），处理完要清空，
   清空后标记自动消失。`note` 是人给自己看的备注，画布上不显示标记。
+- `images` 是贴在节点上的截图：只存相对项目根的路径（如 `maps/.assets/<slug>/x.png`），
+  文件本身在磁盘上。`read_map` 的 outline 会用 `🖼` 列出这些路径，需要看图时直接读文件。
+  加/删用 `apply_ops` 的 `addImage` / `removeImage`，不要整组覆盖 `images`。
 
 - `edges` 是跨分支的关联线（虚线箭头），不参与树结构；也可以有 `color` / `note` / `annotation`，
   批注同样要照着改、改完清空。
@@ -126,7 +129,7 @@ src/export/             导出
   raster.mjs            借用系统浏览器/sips/rsvg 把 SVG 变像素
 src/server/             HTTP 服务（零依赖 node:http）
   store.mjs             项目、文件、加锁、历史、diff
-  http.mjs              路由 + SSE + 静态资源 + 访问口令校验
+  http.mjs              路由 + SSE + 静态资源 + 访问口令校验 + 附图上传
   access.mjs            访问入口：本机/局域网地址、口令生成与记忆
   templates.mjs         内置模板加载
 src/mcp/server.mjs      MCP stdio 服务器

@@ -6,6 +6,7 @@ import {
   ANNOTATION_MAX,
   BOX_HEIGHT_MAX,
   BOX_HEIGHT_MIN,
+  IMAGES_MAX,
   BOX_WIDTH_MAX,
   BOX_WIDTH_MIN,
   DocError,
@@ -18,6 +19,7 @@ import {
   isDescendant,
   newNodeId,
   normalizeHexColor,
+  normalizeImages,
   normalizeTags,
   rootOf,
   subtreeIds,
@@ -168,6 +170,11 @@ export function updateNode(doc, patch = {}) {
     setNumberField(node, 'boxHeight', patch.boxHeight, BOX_HEIGHT_MIN, BOX_HEIGHT_MAX);
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'links')) node.links = normalizeLinkPatch(patch.links);
+  if (Object.prototype.hasOwnProperty.call(patch, 'images')) {
+    const images = normalizeImages(patch.images);
+    if (images.length) node.images = images;
+    else delete node.images;
+  }
   return node;
 }
 
@@ -311,6 +318,32 @@ export function removeEdge(doc, patch = {}) {
   return removed;
 }
 
+/** 给节点加一张附图（截图粘贴走这里）。 */
+export function addImage(doc, patch = {}) {
+  const node = need(doc, patch.node ?? patch.id, '节点');
+  const [image] = normalizeImages([patch.image ?? patch]);
+  if (!image) throw new DocError('缺少附图路径', 'invalid_argument');
+  const images = node.images ?? [];
+  if (images.length >= IMAGES_MAX) throw new DocError(`一个节点最多挂 ${IMAGES_MAX} 张图`, 'invalid_argument');
+  if (!images.some((item) => item.id === image.id)) {
+    node.images = [...images, image];
+  }
+  return image;
+}
+
+/** 删掉节点上的某张附图。 */
+export function removeImage(doc, patch = {}) {
+  const node = need(doc, patch.node ?? patch.id, '节点');
+  const imageId = String(patch.imageId ?? patch.image ?? '').trim();
+  if (!imageId) throw new DocError('缺少附图 id', 'invalid_argument');
+  const before = node.images ?? [];
+  const rest = before.filter((item) => item.id !== imageId);
+  if (rest.length === before.length) throw new DocError(`节点上没有这张图: ${imageId}`, 'not_found');
+  if (rest.length) node.images = rest;
+  else delete node.images;
+  return { nodeId: node.id, imageId };
+}
+
 /** 设置文档标题/布局/主题。 */
 export function setDoc(doc, patch = {}) {
   if (typeof patch.title === 'string' && patch.title.trim()) {
@@ -362,6 +395,12 @@ export function applyOps(doc, ops) {
       case 'reorderNode':
         results.push(reorderNode(next, patch));
         break;
+      case 'addImage':
+        results.push(addImage(next, patch));
+        break;
+      case 'removeImage':
+        results.push(removeImage(next, patch));
+        break;
       case 'addEdge':
         results.push(addEdge(next, patch));
         break;
@@ -388,6 +427,8 @@ export const OP_NAMES = [
   'removeNode',
   'moveNode',
   'reorderNode',
+  'addImage',
+  'removeImage',
   'addEdge',
   'updateEdge',
   'removeEdge',

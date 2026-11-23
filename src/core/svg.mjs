@@ -127,6 +127,18 @@ export function renderSvg(layout, options = {}) {
         `<circle data-annotation="1" cx="${num(cx)}" cy="${num(cy)}" r="${num(4.2 * layout.scale)}" fill="${palette.annotation}" stroke="${palette.canvas}" stroke-width="${num(1.6 * layout.scale)}"/>`,
       );
     }
+    if (node.hasImages) {
+      // 附图标记：左下角一个小方块 + 里面的小山，表示节点上贴了截图
+      const x = node.x + 4 * layout.scale;
+      const y = node.y + node.height - 11 * layout.scale;
+      const size = 7 * layout.scale;
+      out.push(
+        `<g data-images="1" opacity="0.9">`,
+        `<rect x="${num(x)}" y="${num(y)}" width="${num(size)}" height="${num(size)}" rx="${num(1.6 * layout.scale)}" fill="none" stroke="${palette.image}" stroke-width="${num(1.3 * layout.scale)}"/>`,
+        `<path d="M ${num(x + 1.3 * layout.scale)} ${num(y + size - 1.6 * layout.scale)} L ${num(x + size * 0.42)} ${num(y + size * 0.42)} L ${num(x + size - 1.3 * layout.scale)} ${num(y + size - 1.6 * layout.scale)}" fill="none" stroke="${palette.image}" stroke-width="${num(1.1 * layout.scale)}" stroke-linecap="round" stroke-linejoin="round"/>`,
+        `</g>`,
+      );
+    }
     if (linkBadges && node.links.length) {
       const dotY = node.y + node.height / 2;
       node.links.slice(0, 3).forEach((link, index) => {

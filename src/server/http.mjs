@@ -38,6 +38,8 @@ const MIME = {
 };
 
 const MAX_BODY = 8 * 1024 * 1024;
+/** 单张截图上限。 */
+const MAX_IMAGE = 12 * 1024 * 1024;
 
 const json = (res, status, payload) => {
   const body = JSON.stringify(payload);
@@ -50,6 +52,25 @@ const json = (res, status, payload) => {
 };
 
 const fail = (res, status, code, message, extra = {}) => json(res, status, { error: code, message, ...extra });
+
+/** 读原始二进制（贴图上传用），超过 max 字节直接拒绝。 */
+function readBinary(req, max = MAX_IMAGE) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > max) {
+        reject(new StoreError(`图片太大（上限 ${Math.round(max / 1024 / 1024)} MB）`, 'too_large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -253,6 +274,26 @@ export async function createApp(options = {}) {
     });
     json(res, 200, saved);
   });
+  // 上传一张附图（原始二进制 body，content-type 决定扩展名）
+  route('POST', /^\/api\/maps\/([^/]+)\/images$/, async (req, res, params) => {
+    const slug = decodeURIComponent(params[0]);
+    store.read(slug); // 确认导图存在
+    const buffer = await readBinary(req);
+    if (!buffer.length) throw new StoreError('图片内容为空', 'invalid_argument');
+    const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+    const ext = type === 'image/jpeg' ? 'jpg' : type === 'image/webp' ? 'webp' : type === 'image/gif' ? 'gif' : 'png';
+    const saved = store.saveImage(slug, buffer, ext);
+    json(res, 200, { path: saved.path, bytes: saved.bytes });
+  });
+
+  // 取附图（只允许项目目录内的相对路径）
+  route('GET', /^\/api\/assets$/, (req, res, params, url) => {
+    const target = url.searchParams.get('path') ?? '';
+    const file = store.resolveImage(target);
+    if (!file) return fail(res, 404, 'not_found', `图片不存在: ${target}`);
+    serveFile(res, file);
+  });
+
   route('POST', /^\/api\/maps\/([^/]+)\/ops$/, async (req, res, params) => {
     const body = await readBody(req);
     const result = store.applyOps(decodeURIComponent(params[0]), body.ops ?? [], { by: body.by ?? 'agent', summary: body.summary });

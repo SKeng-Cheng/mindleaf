@@ -36,6 +36,22 @@ export const BOX_HEIGHT_MIN = 24;
 export const BOX_HEIGHT_MAX = 500;
 /** 批注是写给 AI 的修改要求，允许比备注长一些。 */
 export const ANNOTATION_MAX = 4000;
+/** 单个节点最多挂多少张附图。 */
+export const IMAGES_MAX = 20;
+/** 附图相对项目根的路径前缀（跟 maps/ 放一起，随导图一起备份）。 */
+export const IMAGE_DIR = '.assets';
+
+/**
+ * 附图路径只允许"相对项目根、不含 .."的形式（浏览器和 Node 共用这个模块，
+ * 所以这里不依赖 node:path，纯字符串判断）。
+ */
+export function normalizeImagePath(value) {
+  const text = typeof value === 'string' ? value.trim().replace(/\\/g, '/') : '';
+  if (!text) return '';
+  if (text.startsWith('/') || /^[a-zA-Z]:/.test(text)) return '';
+  if (text.split('/').includes('..')) return '';
+  return text;
+}
 export const LAYOUTS = ['right', 'left', 'both'];
 export const LINK_KINDS = ['file', 'url', 'code'];
 
@@ -169,12 +185,45 @@ function normalizeNode(raw, index) {
   const boxHeight = clampNumber(raw.boxHeight, BOX_HEIGHT_MIN, BOX_HEIGHT_MAX);
   if (boxHeight) node.boxHeight = boxHeight;
 
+  // 附图：贴在节点上的截图（只存相对路径，文件放在 .assets/ 下）
+  const images = normalizeImages(raw.images);
+  if (images.length) node.images = images;
+
   // 批注：人类写给 AI 的修改要求，处理完由 AI 清空
   if (typeof raw.annotation === 'string') {
     const annotation = raw.annotation.trim().slice(0, ANNOTATION_MAX);
     if (annotation) node.annotation = annotation;
   }
   return node;
+}
+
+/** 附图数组：{ id, path, name?, width?, height?, at? }。 */
+export function normalizeImages(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const imagePath = normalizeImagePath(item.path);
+    if (!imagePath) continue;
+    let id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : '';
+    if (!id || seen.has(id)) {
+      do {
+        id = `img_${Math.random().toString(36).slice(2, 8)}`;
+      } while (seen.has(id));
+    }
+    seen.add(id);
+    const image = { id, path: imagePath };
+    if (typeof item.name === 'string' && item.name.trim()) image.name = item.name.trim().slice(0, 120);
+    const width = Number(item.width) | 0;
+    const height = Number(item.height) | 0;
+    if (width > 0) image.width = width;
+    if (height > 0) image.height = height;
+    if (typeof item.at === 'string' && item.at.trim()) image.at = item.at.trim();
+    out.push(image);
+    if (out.length >= IMAGES_MAX) break;
+  }
+  return out;
 }
 
 function normalizeJournal(raw) {
@@ -437,7 +486,8 @@ export function docStats(doc) {
   for (const { depth } of eachNode(doc)) maxDepth = Math.max(maxDepth, depth);
   const collapsed = doc.nodes.filter((n) => n.collapsed).length;
   const annotations = doc.nodes.filter((n) => n.annotation).length;
-  return { nodes: doc.nodes.length, edges: doc.edges.length, maxDepth, collapsed, annotations };
+  const images = doc.nodes.reduce((sum, n) => sum + (n.images?.length ?? 0), 0);
+  return { nodes: doc.nodes.length, edges: doc.edges.length, maxDepth, collapsed, annotations, images };
 }
 
 /** 给 AI 看的紧凑大纲。 */
@@ -459,6 +509,9 @@ export function outline(doc, options = {}) {
       const [first, ...rest] = node.annotation.split('\n');
       lines.push(`${indent}  ⚑ 批注: ${first}`);
       for (const line of rest) lines.push(`${indent}    ${line}`);
+    }
+    for (const image of node.images ?? []) {
+      lines.push(`${indent}  🖼 ${image.path}${image.name ? ` (${image.name})` : ''}`);
     }
     if (withLinks) {
       for (const link of node.links ?? []) {

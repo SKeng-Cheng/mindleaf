@@ -8,6 +8,8 @@ import {
   removeNode,
   moveNode,
   reorderNode,
+  addImage,
+  removeImage,
   addEdge,
   updateEdge,
   removeEdge,
@@ -163,6 +165,23 @@ test('addEdge / updateEdge 支持颜色、备注、批注，空串即清除', ()
   updateEdge(doc, { id: edge.id, from: b.id, to: a.id });
   assert.equal(doc.edges[0].from, b.id);
   assert.equal(doc.edges[0].to, a.id);
+});
+
+test('addImage / removeImage：单张添加与删除，不覆盖已有的', () => {
+  const { doc, a } = base();
+  const first = addImage(doc, { node: a.id, image: { path: '.assets/t/1.png', width: 100, height: 80 } });
+  const second = addImage(doc, { node: a.id, image: { path: '.assets/t/2.png' } });
+  assert.equal(getNode(doc, a.id).images.length, 2);
+  assert.ok(first.id && second.id);
+
+  removeImage(doc, { node: a.id, imageId: first.id });
+  assert.deepEqual(getNode(doc, a.id).images.map((im) => im.path), ['.assets/t/2.png']);
+
+  removeImage(doc, { node: a.id, imageId: second.id });
+  assert.equal(getNode(doc, a.id).images, undefined, '最后一张删掉后字段清空');
+
+  assert.throws(() => removeImage(doc, { node: a.id, imageId: 'img_nope' }), /没有这张图/);
+  assert.throws(() => addImage(doc, { node: a.id, image: { path: '/abs.png' } }), /缺少附图路径/);
 });
 
 test('updateNode 支持批注，传空串可以清掉', () => {
@@ -330,7 +349,8 @@ test('applyOps 支持全部 op 名称', () => {
   assert.equal(getNode(next, a.id).text, 'A*');
   assert.equal(getNode(next, b.id).parent, a.id);
   assert.equal(next.edges.length, 1);
-  assert.deepEqual(OP_NAMES.length, 10);
+  assert.deepEqual(OP_NAMES.length, 12);
+  assert.ok(OP_NAMES.includes('addImage') && OP_NAMES.includes('removeImage'));
 });
 
 test('applyOps 拒绝未知 op 和非法输入', () => {
