@@ -29,6 +29,10 @@
     </a>
     <span class="topbar-divider" aria-hidden="true"></span>
     <button class="doc-title" id="doc-title" title="重命名当前导图">未选择导图</button>
+    <button class="share-btn" id="btn-share" title="局域网分享链接" aria-label="获取局域网分享链接">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1-1"/></svg>
+      <span>分享</span>
+    </button>
     <span class="topbar-spacer"></span>
 
     <div class="topbar-group">
@@ -338,6 +342,27 @@
   <div class="note-tooltip-head" id="note-tooltip-title"></div>
   <div class="note-tooltip-body" id="note-tooltip-body"></div>
 </div>
+
+<!-- ================= 局域网分享 ================= -->
+<dialog class="modal" id="dlg-share">
+  <form class="modal-card" id="form-share" novalidate>
+    <div class="modal-head">
+      <h2>局域网分享</h2>
+      <button type="button" class="icon-btn xs" data-close title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <p class="modal-desc">同一个局域网里的人用这个地址打开，就能一起看、一起改这份导图 —— 改的是你电脑上的同一份文件，不用发文件。</p>
+    <div class="share-row">
+      <textarea class="input mono share-url" id="share-url" rows="2" readonly spellcheck="false" aria-label="分享链接"></textarea>
+      <button type="button" class="btn primary sm" id="btn-share-copy">复制</button>
+    </div>
+    <p class="hint" id="share-hint"></p>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" data-close>关闭</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- ================= 设置 ================= -->
 <dialog class="modal modal-lg" id="dlg-settings">

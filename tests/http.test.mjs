@@ -31,6 +31,18 @@ const setup = async () => {
   return { session, base, api, projectDir };
 };
 
+test('HTTP: /api/state 带上访问入口（顶栏「分享」按钮用）', async (t) => {
+  const projectDir = tempProject();
+  const session = await startServer({ projectDir, port: 0, host: '127.0.0.1', token: 'sharetoken' });
+  t.after(() => session.close());
+  const response = await fetch(`${session.url}/api/state`, { headers: { cookie: 'mindleaf_token=sharetoken' } });
+  const payload = await response.json();
+  assert.ok(payload.access, 'state 里应有 access');
+  assert.equal(payload.access.local, `${session.url}/?t=sharetoken`);
+  assert.equal(payload.access.same, true, '只监听本机时没有协作入口');
+  assert.equal(payload.access.lan, null);
+});
+
 test('HTTP: 设了口令后，没口令一律 401，带口令（网址/cookie/请求头）才放行', async (t) => {
   const projectDir = tempProject();
   const session = await startServer({ projectDir, port: 0, host: '127.0.0.1', token: 'abc123' });

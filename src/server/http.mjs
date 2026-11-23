@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, StoreError } from './store.mjs';
+import { accessEntries } from './access.mjs';
 import { fromMarkdown, guessTitle, toMarkdown } from '../core/markdown.mjs';
 import { outline, normalizeDoc, docStats, eachNode, rootOf } from '../core/doc.mjs';
 import { EXPORT_FORMATS } from '../export/exporters.mjs';
@@ -173,8 +174,17 @@ export async function createApp(options = {}) {
   const routes = [];
   const route = (method, pattern, handler) => routes.push({ method, pattern, handler });
 
+  /** 当前服务的访问入口（给网页顶栏的「分享」按钮用）。 */
+  const accessInfo = () => {
+    const port = server?.address()?.port ?? 0;
+    if (!port) return { local: '', lan: null, same: true };
+    const host = options.host ?? '127.0.0.1';
+    return accessEntries({ port, listenHost: host, token: options.token ?? '' });
+  };
+
   const state = () => ({
     ...store.summary(),
+    access: accessInfo(),
     engines: {
       chromium: engines.chromium.length > 0,
       chromiumPath: engines.chromium[0] ?? null,

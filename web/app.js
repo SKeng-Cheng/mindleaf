@@ -413,6 +413,15 @@ function renderTopbar() {
 
   $('#btn-theme').title = currentTheme() === 'dark' ? '切换到浅色主题' : '切换到深色主题';
 
+  const shareBtn = $('#btn-share');
+  if (shareBtn) {
+    const access = state.boot?.access;
+    const link = shareUrl();
+    shareBtn.hidden = !link;
+    shareBtn.title = access?.lan ? `局域网分享：${link}` : '分享链接（当前只有本机能打开）';
+    shareBtn.classList.toggle('is-local-only', !access?.lan);
+  }
+
   for (const button of $$('#layout-seg .seg-btn')) {
     const active = (state.doc?.settings?.layout ?? 'right') === button.dataset.layout;
     button.classList.toggle('is-active', active);
@@ -2298,6 +2307,43 @@ function updateLinkGuess() {
   hint.textContent = `识别为${KIND_LABELS[guessLinkKind(state.linkDraft.target)] ?? '文件'}`;
 }
 
+/* ---- 局域网分享 ---- */
+
+/** 当前导图的分享链接：优先局域网地址，没有就退回本机地址；带上当前导图。 */
+function shareUrl() {
+  const access = state.boot?.access;
+  if (!access) return '';
+  const base = access.lan || access.local || '';
+  if (!base) return '';
+  return state.slug ? `${base}#${encodeURIComponent(state.slug)}` : base;
+}
+
+function openShareDialog() {
+  const url = shareUrl();
+  const input = $('#share-url');
+  const hint = $('#share-hint');
+  if (!url) {
+    input.value = '';
+    hint.textContent = '拿不到分享地址：请用 mm serve 启动服务（而不是直接打开 HTML 文件）。';
+  } else {
+    input.value = url;
+    const access = state.boot?.access;
+    hint.textContent = access?.lan
+      ? '换到别的网络后地址会变，重新启动服务看新的即可。对方需要和你连同一个局域网。'
+      : '当前只有本机地址（服务用了 --host 127.0.0.1 或没有局域网网卡），其他人打不开。';
+  }
+  openDialog($('#dlg-share'));
+  input.title = url;
+  // 打开就选中，方便直接 ⌘C
+  setTimeout(() => input.select?.(), 60);
+}
+
+async function copyShareUrl() {
+  const url = $('#share-url').value.trim();
+  if (!url) return;
+  await copyText(url);
+}
+
 /* ---- 关联线：选中、编辑、新建 ---- */
 
 function selectedEdge() {
@@ -2855,6 +2901,8 @@ function bindEvents() {
     toast('已恢复默认栏宽', { tone: 'ok' });
     if (state.doc) applyTransform();
   });
+  $('#btn-share').addEventListener('click', openShareDialog);
+  $('#btn-share-copy').addEventListener('click', copyShareUrl);
   $('#btn-link-cancel').addEventListener('click', cancelLink);
   $('#btn-settings').addEventListener('click', openSettingsDialog);
   $('#btn-settings-side').addEventListener('click', openSettingsDialog);

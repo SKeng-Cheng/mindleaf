@@ -615,6 +615,45 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：顶栏「分享」按钮给出局域网链接并可复制', { skip, timeout: 90000 }, async (t) => {
+  const { session, slug } = await bootProject();
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  const button = await browser.evaluate(`({
+    exists: !!document.querySelector('#btn-share'),
+    visible: document.querySelector('#btn-share') && !document.querySelector('#btn-share').hidden,
+    text: document.querySelector('#btn-share')?.textContent.trim(),
+    afterTitle: document.querySelector('#doc-title')?.nextElementSibling?.id,
+  })`);
+  assert.equal(button.exists, true, '顶栏应有分享按钮');
+  assert.equal(button.visible, true, '拿到地址时分享按钮应显示');
+  assert.equal(button.text, '分享');
+  assert.equal(button.afterTitle, 'btn-share', '分享按钮应紧跟导图名称');
+
+  await browser.evaluate(`document.querySelector('#btn-share').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const dialog = await browser.evaluate(`({
+    open: document.querySelector('#dlg-share').open,
+    url: document.querySelector('#share-url').value,
+    selected: document.querySelector('#share-url').selectionEnd - document.querySelector('#share-url').selectionStart,
+    hint: document.querySelector('#share-hint').textContent,
+  })`);
+  assert.equal(dialog.open, true, '点分享应弹出对话框');
+  assert.match(dialog.url, /^http:\/\/127\.0\.0\.1:\d+\//, `地址应是本机开头，实际 ${dialog.url}`);
+  assert.match(dialog.url, new RegExp(`#${encodeURIComponent(slug)}`), '地址应指向当前导图');
+  assert.ok(dialog.selected > 10, '打开时应选中整段地址，方便直接复制');
+  assert.ok(dialog.hint.length > 0, '应有提示文字');
+
+  // 复制按钮不会报错（无头环境里剪贴板可能不可用，只要不抛异常）
+  await browser.evaluate(`document.querySelector('#btn-share-copy').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：带图标的按钮，图标和文字都垂直居中', { skip, timeout: 90000 }, async (t) => {
   const { session, slug } = await bootProject();
   const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
