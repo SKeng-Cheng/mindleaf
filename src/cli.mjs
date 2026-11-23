@@ -15,7 +15,7 @@ import { fromMarkdown, guessTitle, toMarkdown } from './core/markdown.mjs';
 import { resolveNodeRef } from './mcp/server.mjs';
 import { EXPORT_FORMATS } from './export/exporters.mjs';
 import { detectEngines, openInBrowser } from './export/raster.mjs';
-import { accessEntries, formatAccessEntries, isAllInterfaces, pingServer, resolveToken } from './server/access.mjs';
+import { accessEntries, formatAccessEntries, pingServer, resolveToken } from './server/access.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -34,13 +34,11 @@ const HELP = `${c.bold('mindleaf')} —— AI 友好的本地思维导图（零�
 
 用法: mm <命令> [选项]
 常用:
-  mm serve [--port 7788]              启动网页并自动打开浏览器（--no-open 不打开）
-  mm serve                            前台启动；网页全关后自动退出（--no-exit-when-closed 保持常驻）
-  mm serve --detach                   后台启动：关掉终端也不停，网页全关后自己退出
-  mm serve                             起网页，打印"本人/发给对方"两个入口（默认自动带口令）
-  mm serve --token 口令                 指定访问口令（会记住，下次还用这个）
-  mm serve --no-token                  不要口令（同网段任何人都能开，慎用）
-  mm serve --host 127.0.0.1            只给本机用，不对外
+  mm serve [--port 7788] [--no-open]  起网页：自动开浏览器，打印「本人 / 发给对方」两个入口
+  mm serve --detach                   后台常驻：关掉终端也不停，网页全关后自动退出
+  mm serve --host 127.0.0.1           只给本机用，不对外分享
+  mm serve --token 口令               指定访问口令（默认自动生成，会记住）
+  mm serve --no-token                 不要口令（同网段任何人都能开，慎用）
   mm stop                             关闭后台服务
   mm list [--tag 标签]               列出全部导图（可按标签过滤）
   mm tag <导图> [--add a,b] [--remove c] [--set x,y] [--clear]   管理标签

@@ -79,7 +79,7 @@
   <!-- ================= 外部修改提示条 ================= -->
   <div class="banner" id="external-banner" role="status" hidden>
     <span class="banner-dot" aria-hidden="true"></span>
-    <span class="banner-text" id="banner-text">导图已被外部（AI 或其它窗口）修改 · 点击刷新</span>
+    <span class="banner-text">导图已被外部（AI 或其它窗口）修改 · 点击刷新</span>
     <button class="btn sm banner-btn" id="btn-banner-refresh">刷新</button>
     <button class="icon-btn xs" id="btn-banner-close" title="稍后再说" aria-label="关闭提示">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
@@ -140,7 +140,7 @@
           <button class="seg-btn" type="button" data-layout="left" title="向左展开：中心在右，分支向左">向左</button>
           <button class="seg-btn" type="button" data-layout="both" title="双向展开：一级分支分列中心两侧">双向</button>
         </div>
-        <div class="pill zoom" id="zoom-box">
+        <div class="pill zoom">
           <button class="icon-btn xs" id="btn-zoom-out" title="缩小" aria-label="缩小">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
           </button>
@@ -345,7 +345,7 @@
 
 <!-- ================= 局域网分享 ================= -->
 <dialog class="modal" id="dlg-share">
-  <form class="modal-card" id="form-share" novalidate>
+  <form class="modal-card" novalidate>
     <div class="modal-head">
       <h2>局域网分享</h2>
       <button type="button" class="icon-btn xs" data-close title="关闭" aria-label="关闭">
@@ -443,7 +443,7 @@
 
 <!-- ================= 通用确认框 ================= -->
 <dialog class="modal modal-sm" id="dlg-confirm">
-  <form class="modal-card" id="form-confirm" novalidate>
+  <form class="modal-card" novalidate>
     <div class="modal-head"><h2 id="confirm-title">确认操作</h2></div>
     <p class="modal-desc" id="confirm-message"></p>
     <div class="modal-foot">

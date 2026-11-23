@@ -49,7 +49,7 @@ is closed.
 | | |
 | --- | --- |
 | **Browser editing** | inline edit, drag to reparent, `Tab` / `Enter` to add nodes, undo/redo, collapse, three layouts |
-| **Edit with an AI** | MCP over stdio, 19 tools; works with DSH, Codex, Claude Code, Claude Desktop |
+| **Edit with an AI** | MCP over stdio, 21 tools; works with DSH, Codex, Claude Code, Claude Desktop |
 | **Annotations** | write "change this bit like so" on a node; the agent sees it first and follows it, and the blue dot goes away when it's done |
 | **Hover for notes** | rest the mouse on a node and its note pops up next to the cursor (delay configurable) |
 | **Paste screenshots** | ⌘V a screenshot straight into a node's note — figures, plots and review comments stay with the node |

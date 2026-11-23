@@ -15,6 +15,7 @@
   },
   "files": [
     "bin",
+    "scripts",
     "src",
     "web",
     "templates",

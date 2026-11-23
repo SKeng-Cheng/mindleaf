@@ -198,6 +198,8 @@ read_map  →  apply_ops  →  export_map
 带批注的节点左上角有个**蓝色小点**，大纲里也会标一个 ⚑，一眼能看出哪里还没处理。
 AI 改完把批注清掉，蓝点就自动消失了。
 
+![批注：写在备注下面，带蓝点的节点表示还有待处理的批注](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/annotation.png)
+
 AI 那边是这样接的：
 
 - `read_map` 的顶部会先提示"有 N 条批注等你处理"，outline 里用 `⚑ 批注:` 标出原文
@@ -418,9 +420,10 @@ MCP 走标准 stdio 协议，DSH、Codex、Claude Code、Claude Desktop 都能�
 node bin/mindleaf.mjs mcp --project "/path/to/项目"
 ```
 
-AI 那边的 21 个工具：`list_maps` `list_tags` `list_fonts` `list_templates` `create_map` `read_map`
-`add_node` `update_node` `remove_node` `move_node` `apply_ops` `add_edge` `update_map` `list_annotations` `export_map`
-`import_markdown` `recent_changes` `open_in_browser` `doctor`。
+AI 那边的 21 个工具：`list_maps` `list_tags` `list_annotations` `list_templates` `list_fonts`
+`create_map` `read_map` `add_node` `update_node` `remove_node` `move_node` `apply_ops`
+`add_edge` `update_edge` `remove_edge` `update_map` `export_map` `import_markdown`
+`recent_changes` `open_in_browser` `doctor`。
 
 配置可以自动写，也可以只打印出来自己贴：
 

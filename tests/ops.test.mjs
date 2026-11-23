@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createDoc, getNode, childrenOf, normalizeDoc, DocError } from '../src/core/doc.mjs';
+import { createDoc, getNode, childrenOf, normalizeDoc } from '../src/core/doc.mjs';
 import {
   addNode,
   addChildren,

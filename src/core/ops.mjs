@@ -96,9 +96,6 @@ function normalizeLinkPatch(raw) {
 const COLOR_FIELDS = ['color', 'textColor', 'lineColor'];
 const TYPE_FIELDS = ['fontSize', 'font'];
 const STYLE_FIELDS = [...COLOR_FIELDS, ...TYPE_FIELDS];
-/** 只对单个节点生效的尺寸字段（各节点文字长度不同，不适合整枝套用）。 */
-const SIZE_FIELDS = ['boxWidth', 'boxHeight'];
-
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Math.round(value)));
 
 function setNumberField(node, key, raw, min, max) {

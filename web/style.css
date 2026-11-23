@@ -709,8 +709,7 @@ kbd {
 .stage g[data-node-id]:hover > rect { stroke: var(--ink-3); }
 .stage g[data-node-id].is-selected > rect { stroke: var(--select); stroke-width: 2.5px; }
 .stage g[data-node-id].is-drop-target > rect { stroke: var(--drop); stroke-width: 3px; stroke-dasharray: 7 4; }
-.stage g[data-node-id].is-dimmed { opacity: 0.45; }
-
+.stage g[data-node-id]
 /* 画布顶部浮层 */
 .canvas-top {
   position: absolute;
@@ -1341,7 +1340,6 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 /* 结构按钮 */
 .struct-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .struct-grid .btn { justify-content: flex-start; padding: 0 10px; }
-.struct-grid .btn.wide { grid-column: 1 / -1; }
 .struct-grid .btn.danger { color: #fff; }
 /* 幽灵样式的危险按钮才用红字（实心的 danger 按钮是红底白字） */
 .struct-grid .btn.ghost.danger { color: var(--danger); }

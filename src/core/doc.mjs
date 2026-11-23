@@ -38,9 +38,6 @@ export const BOX_HEIGHT_MAX = 500;
 export const ANNOTATION_MAX = 4000;
 /** 单个节点最多挂多少张附图。 */
 export const IMAGES_MAX = 20;
-/** 附图相对项目根的路径前缀（跟 maps/ 放一起，随导图一起备份）。 */
-export const IMAGE_DIR = '.assets';
-
 /**
  * 附图路径只允许"相对项目根、不含 .."的形式（浏览器和 Node 共用这个模块，
  * 所以这里不依赖 node:path，纯字符串判断）。

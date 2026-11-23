@@ -8,7 +8,7 @@
  * 节点下的无序列表/段落当作 note（备注），列表里以 `- [链接文字](目标)` 书写链接。
  * 这种映射保证导图能被任何 Markdown 编辑器打开，也能被人类直接手写。
  */
-import { createDoc, normalizeDoc, rootOf, childrenMap, getNode, eachNode, guessLinkKind } from './doc.mjs';
+import { normalizeDoc, rootOf, childrenMap, guessLinkKind } from './doc.mjs';
 
 const LINK_RE = /\[([^\]]*)\]\(([^)]*)\)/g;
 const BARE_URL_RE = /https?:\/\/[^\s<>()（）「」]+/g;
