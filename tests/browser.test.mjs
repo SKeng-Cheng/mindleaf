@@ -675,7 +675,7 @@ test('浏览器：没选中节点时可以写整图备注/批注，图片默认�
       const note = document.querySelector('#doc-note');
       note.focus();
       note.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, 2500));
     }
     return {
       icons: document.querySelectorAll('.image-item.is-collapsed').length,
@@ -686,6 +686,23 @@ test('浏览器：没选中节点时可以写整图备注/批注，图片默认�
   assert.equal(pasted.icons, 2, '两张图默认都收成小图标');
   assert.equal(pasted.expanded, 0);
   assert.equal(pasted.count, '2');
+
+  // 小图标尺寸（78px）和 × 贴着右上角（别压在图片中间，避免误点）
+  const geometry = await browser.evaluate(`(() => {
+    const item = document.querySelector('.image-item.is-collapsed');
+    const icon = item.querySelector('.image-icon').getBoundingClientRect();
+    const del = item.querySelector('.image-del').getBoundingClientRect();
+    return {
+      width: Math.round(icon.width),
+      height: Math.round(icon.height),
+      insetTop: Math.round(del.top - icon.top),
+      insetRight: Math.round(icon.right - del.right),
+      delWidth: Math.round(del.width),
+    };
+  })()`);
+  assert.ok(geometry.width >= 74 && geometry.height >= 74, `小图标应放大到 78px 左右，实际 ${geometry.width}×${geometry.height}`);
+  assert.ok(geometry.insetTop <= 3 && geometry.insetRight <= 4, `× 应贴住右上角，实际 top ${geometry.insetTop} right ${geometry.insetRight}`);
+  assert.ok(geometry.delWidth <= 20, '× 按钮要小一号');
 
   // 展开第一张 → 只展开它
   const one = await browser.evaluate(`(async () => {

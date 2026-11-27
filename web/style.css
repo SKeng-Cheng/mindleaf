@@ -1189,13 +1189,13 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 }
 /* 收起状态：一排小图标 */
 .image-item.is-collapsed {
-  width: 52px;
+  width: 78px;
   flex: none;
 }
 .image-item.is-collapsed .image-icon {
   display: block;
-  width: 52px;
-  height: 52px;
+  width: 78px;
+  height: 78px;
   padding: 0;
   border: 0;
   border-radius: 9px;
@@ -1266,6 +1266,20 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .image-del:focus-visible { opacity: 1; }
 .image-del svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .image-del:hover { background: var(--danger); }
+
+/* 收起的小图标：× 紧贴右上角、缩小一号，不然会压在图中间容易误点 */
+.image-item.is-collapsed .image-del {
+  top: 1px;
+  right: 1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: color-mix(in srgb, #0b1220 62%, transparent);
+}
+.image-item.is-collapsed .image-del svg { width: 10px; height: 10px; }
+/* 小图标上常显一角，方便直接删（手机上也没有 hover） */
+.image-item.is-collapsed .image-del { opacity: 0.85; }
+.image-item.is-collapsed:hover .image-del { opacity: 1; }
 
 /* 右下角的"收起"按钮：点它回到小图标 */
 .image-collapse {
