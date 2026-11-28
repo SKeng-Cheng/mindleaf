@@ -92,18 +92,37 @@ async function openBrowser(url) {
         else resolve(message.result);
         return;
       }
+      // 浏览器插件（Zotero / Grammarly 之类）会往页面里注入自己的报错，
+      // 那跟我们无关；只记录页面自身的错误，否则 e2e 会随机失败。
+      const fromExtension = (text) => /chrome-extension:|moz-extension:|Extension context invalidated/i.test(String(text));
       if (message.method === 'Runtime.exceptionThrown') {
-        consoleErrors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
+        const desc = message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text;
+        if (!fromExtension(desc)) consoleErrors.push(desc);
       }
       if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
-        consoleErrors.push(message.params.args.map((arg) => arg.value ?? arg.description ?? '').join(' '));
+        const text = message.params.args.map((arg) => arg.value ?? arg.description ?? '').join(' ');
+        if (!fromExtension(text) && text.trim() !== 'Object') consoleErrors.push(text);
       }
     };
     await send('Runtime.enable');
     await send('Page.enable');
     await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await send('Page.navigate', { url });
-    await sleep(2500);
+    // 等到画布真的渲染出来再返回。固定 sleep 在机器忙的时候不够用（会偶发失败）。
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await sleep(250);
+      try {
+        const ready = await evaluate(`(() => {
+          if (document.readyState !== 'complete') return false;
+          if (!document.querySelector('#canvas-stage svg')) return false;
+          return document.querySelectorAll('#canvas-stage g[data-node-id]').length > 0;
+        })()`);
+        if (ready) break;
+      } catch {
+        /* 页面还在导航，重试 */
+      }
+    }
+    await sleep(250);
     return {
       evaluate,
       consoleErrors,
@@ -683,12 +702,21 @@ test('浏览器：分享文件 —— 清单、打开文本改并保存、Office
   })()`);
   const office = await browser.evaluate(`({
     saveHidden: document.querySelector('#btn-shared-save').hidden,
-    hint: document.querySelector('#shared-hint').textContent,
     hasDavButton: !!document.querySelector('#btn-shared-dav'),
+    guide: !!document.querySelector('.office-guide'),
+    guideTitle: document.querySelector('.office-guide-title')?.textContent ?? '',
+    guideSteps: [...document.querySelectorAll('.office-guide-steps li')].map((li) => li.textContent.trim()),
+    guideCopy: !!document.querySelector('[data-act="shared-dav-copy"]'),
+    previewOrNote: !!document.querySelector('.shared-image img') || !!document.querySelector('.shared-image'),
   })`);
   assert.equal(office.saveHidden, true, 'Office 文件不该给保存按钮');
-  assert.match(office.hint, /网盘|挂载/, '应引导用网盘挂载编辑');
   assert.equal(office.hasDavButton, true, '应能复制网盘地址');
+  assert.equal(office.guide, true, 'Office 文件应给出「用本机程序打开」的引导');
+  assert.match(office.guideTitle, /Word|PowerPoint|Office|本机/, '引导标题要说明用本机程序打开');
+  assert.ok(office.guideSteps.length >= 3, `引导应有 3 步，实际 ${office.guideSteps.length}`);
+  assert.match(office.guideSteps.join(' '), /Finder|资源管理器|文件管理器/, '应说明怎么挂载网盘');
+  assert.match(office.guideSteps.join(' '), /Word|PowerPoint|Excel|编辑/, '应说明用本机 Office 编辑');
+  assert.equal(office.guideCopy, true, '引导里应有复制网盘地址的按钮');
 
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
@@ -930,7 +958,14 @@ test('浏览器：顶栏「分享」按钮给出局域网链接并可复制', { 
   assert.equal(button.afterTitle, 'btn-share', '分享按钮应紧跟导图名称');
 
   await browser.evaluate(`document.querySelector('#btn-share').click()`);
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  // 等地址被选中（dialog 的 focus 时机在不同负载下会差一点，轮询更稳）
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const ready = await browser.evaluate(
+      `(() => { const el = document.querySelector('#share-url'); return !!el && el.selectionEnd - el.selectionStart > 10; })()`,
+    );
+    if (ready) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   const dialog = await browser.evaluate(`({
     open: document.querySelector('#dlg-share').open,
     url: document.querySelector('#share-url').value,

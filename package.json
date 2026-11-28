@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "start": "node bin/mindleaf.mjs serve",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "test:e2e": "node --test tests/browser.test.mjs",
     "mm": "node bin/mindleaf.mjs",
     "lite": "node scripts/build-lite.mjs"

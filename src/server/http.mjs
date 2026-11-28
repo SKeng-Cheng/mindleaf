@@ -220,6 +220,8 @@ export async function createApp(options = {}) {
       },
       formats: EXPORT_FORMATS,
       version: readVersion(),
+      // Office/PDF 的网页预览要靠系统缩略图工具；没有时前端会引导用本机 Office 打开
+      preview: { office: fs.existsSync('/usr/bin/qlmanage') && process.platform === 'darwin', platform: process.platform },
     };
   };
 

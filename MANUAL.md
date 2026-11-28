@@ -274,11 +274,16 @@ AI 那边 `read_map` 会把整图的备注、批注、图片列在最前面（�
 | md / txt / csv / json / 代码 | 直接打开编辑器，改完 `⌘S` 保存 | 网页里就能改 |
 | 图片 | 直接显示大图 | 一般不需要改 |
 | PDF | 浏览器内置阅读器，能翻页缩放 | 用下面的网盘挂载，用本机 PDF 工具改 |
-| docx / doc / ppt / pptx / xlsx | 显示系统生成的预览图 | **用网盘挂载，用本机 Office 打开编辑** |
+| docx / doc / ppt / pptx / xlsx | 显示系统生成的预览图；这台机器没有预览工具时，会直接给出「用你本机的 Word / PowerPoint 打开」的三步引导 | **用网盘挂载，用本机 Office 打开编辑** |
 
 ### 网盘挂载（Office 文件就靠这个）
 
 浏览器里改不了 Office 文档，所以服务同时开了一个 **WebDAV 网盘**，只暴露分享清单里的文件：
+
+![打开 docx：有预览图，下面是用本机 Office 编辑的步骤](https://raw.githubusercontent.com/SKeng-Cheng/mindleaf/main/docs/images/share-office.png)
+
+不管有没有预览图，Office 文件都会给这张「用你本机装的 Word / PowerPoint 打开」的引导卡，
+里面就是三步：复制网盘地址 → 挂载 → 双击编辑保存。按钮可以直接把地址、用户名、口令一次复制走。
 
 1. 在文件对话框里点「**复制网盘地址**」，会拿到三项：地址（`http://<你的IP>:7788/dav/`）、用户名（`mindleaf`）、密码（访问口令）
 2. 对方在 **Finder**：`前往 → 连接服务器`（`⌘K`）→ 粘贴地址 → 用户名密码；

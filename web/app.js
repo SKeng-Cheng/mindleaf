@@ -2701,6 +2701,43 @@ async function renderBrowse() {
   list.innerHTML = rows.length ? rows.join('') : '<p class="image-empty">这个目录是空的</p>';
 }
 
+/** 用本机 Office 打开的引导（Office 文件在浏览器里没法就地编辑）。 */
+function officeGuideHtml() {
+  const platform = state.boot?.preview?.platform ?? 'darwin';
+  const mountStep =
+    platform === 'darwin'
+      ? 'Finder 里按 <kbd>⌘K</kbd> → 粘贴地址 → 用户名 <code>mindleaf</code>、密码是访问口令'
+      : platform === 'win32'
+        ? '资源管理器 → 右键「映射网络驱动器」→ 粘贴地址 → 用户名 <code>mindleaf</code>、密码是访问口令'
+        : '用文件管理器挂载 WebDAV（如 davfs2）→ 粘贴地址 → 用户名 <code>mindleaf</code>、密码是访问口令';
+  const appName = fileExtText()
+  return `
+    <div class="office-guide">
+      <div class="office-guide-head">
+        <span class="office-guide-icon" aria-hidden="true">📄</span>
+        <div>
+          <p class="office-guide-title">浏览器里改不了 Word / PowerPoint，请用你本机装的 ${appName} 打开</p>
+          <p class="office-guide-sub">改完保存，写回的还是这台电脑上的原文件，你那边不会留副本。</p>
+        </div>
+      </div>
+      <ol class="office-guide-steps">
+        <li>点下面的「复制网盘地址」，会得到 <b>地址 / 用户名 / 密码</b> 三项</li>
+        <li>${mountStep}</li>
+        <li>挂载出来的目录里双击这个文件，用 <b>Word / PowerPoint / Excel</b> 直接编辑保存</li>
+      </ol>
+      <button type="button" class="btn primary sm" data-act="shared-dav-copy">复制网盘地址并说明</button>
+    </div>`;
+}
+
+/** 根据扩展名猜该用哪个本机程序（只说大类，不写死软件名）。 */
+function fileExtText() {
+  const ext = fileExt(sharedCurrent?.path ?? '');
+  if (['.doc', '.docx'].includes(ext)) return 'Word';
+  if (['.ppt', '.pptx'].includes(ext)) return 'PowerPoint';
+  if (['.xls', '.xlsx'].includes(ext)) return 'Excel';
+  return 'Office';
+}
+
 /* ---- 查看 / 编辑 ---- */
 
 let sharedCurrent = null; // { id, path, mode, mtime, kind }
@@ -2743,9 +2780,13 @@ async function renderSharedView() {
   }
   if (isOfficeExt(file.path)) {
     file.kind = 'office';
-    body.innerHTML = `<div class="shared-image"><img src="${base}/preview?${qs}" alt="${esc(file.path)}" onerror="this.replaceWith(Object.assign(document.createElement('p'),{className:'image-empty',textContent:'这台机器没有生成预览的工具，直接点「复制网盘地址」用本机 Office 打开。'}))"></div>`;
-    hint.textContent =
-      '浏览器里改不了 Office 文件。点「复制网盘地址」，把它挂载到 Finder / 资源管理器，然后用你电脑上的 Word / PPT 直接打开编辑 —— 保存回去的还是这台机器上的原文件，不会在你那边留副本。';
+    const canPreview = state.boot?.preview?.office === true;
+    body.innerHTML = `${
+      canPreview
+        ? `<div class="shared-image"><img src="${base}/preview?${qs}" alt="${esc(file.path)}" onerror="this.closest('.shared-image')?.remove()"></div>`
+        : '<p class="image-empty">这台机器没法生成 Office 预览图，直接按下面的步骤用你本机的程序打开。</p>'
+    }${officeGuideHtml()}`;
+    hint.textContent = '';
     $('#btn-shared-save').hidden = true;
     return;
   }
@@ -2767,9 +2808,9 @@ async function renderSharedView() {
     }
     return;
   }
-  // 其它类型：给下载 + 网盘提示
+  // 其它类型：同样引导用本机程序打开
   file.kind = 'other';
-  body.innerHTML = `<p class="image-empty">这种文件没法在浏览器里预览。点「复制网盘地址」挂载后用本机程序打开，或者关闭后在 Finder 里看。</p>`;
+  body.innerHTML = `<p class="image-empty">这种文件在浏览器里没法预览。</p>${officeGuideHtml()}`;
   hint.textContent = '';
   $('#btn-shared-save').hidden = true;
 }
@@ -2832,8 +2873,17 @@ function openShareDialog() {
   }
   openDialog($('#dlg-share'));
   input.title = url;
-  // 打开就选中，方便直接 ⌘C
-  setTimeout(() => input.select?.(), 60);
+  // 打开就选中，方便直接 ⌘C。dialog 自己的 focus 可能晚一步，所以 focus 时再选一次。
+  const selectAll = () => {
+    try {
+      input.focus({ preventScroll: true });
+      input.select();
+    } catch {
+      /* 忽略 */
+    }
+  };
+  setTimeout(selectAll, 120);
+  input.addEventListener('focus', selectAll, { once: true });
 }
 
 async function copyShareUrl() {
@@ -3453,6 +3503,9 @@ function bindEvents() {
   $('#btn-shared-save').addEventListener('click', saveSharedText);
   $('#btn-shared-reload').addEventListener('click', renderSharedView);
   $('#btn-shared-dav').addEventListener('click', copyDavInfo);
+  $('#shared-body').addEventListener('click', (event) => {
+    if (event.target.closest('[data-act="shared-dav-copy"]')) copyDavInfo();
+  });
   $('#shared-body').addEventListener('keydown', (event) => {
     if ((event.metaKey || event.ctrlKey) && String(event.key).toLowerCase() === 's') {
       event.preventDefault();
