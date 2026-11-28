@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Mindleaf 思维导图",
+    "description": "连接本地 Mindleaf MCP 服务，让 agent 能读取、修改、导出思维导图（PNG/JPG/PDF/SVG/Markdown/JSON）。导图是项目 maps/ 目录里的普通 JSON 文件，网页端（mindleaf serve）与 agent 始终编辑同一份文档。会新增 mindleaf__* 系列工具，关闭该 bundle 即可移除。"
+  }
+}

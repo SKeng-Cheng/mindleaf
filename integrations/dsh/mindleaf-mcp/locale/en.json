@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Mindleaf mind maps",
+    "description": "Connects the local Mindleaf MCP server so the agent can read, edit and export mind maps (PNG, JPG, PDF, SVG, Markdown, JSON). Maps are plain JSON files in the project's maps/ directory, so the web app at `mindleaf serve` and the agent always work on the same document. Adds mindleaf__* tools; turn this bundle off to remove them."
+  }
+}
