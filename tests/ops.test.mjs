@@ -375,8 +375,10 @@ test('applyOps 支持全部 op 名称', () => {
   assert.equal(getNode(next, a.id).text, 'A*');
   assert.equal(getNode(next, b.id).parent, a.id);
   assert.equal(next.edges.length, 1);
-  assert.deepEqual(OP_NAMES.length, 12);
-  assert.ok(OP_NAMES.includes('addImage') && OP_NAMES.includes('removeImage'));
+  assert.deepEqual(OP_NAMES.length, 15);
+  for (const name of ['addImage', 'removeImage', 'addSharedFile', 'updateSharedFile', 'removeSharedFile']) {
+    assert.ok(OP_NAMES.includes(name), `OP_NAMES 里应有 ${name}`);
+  }
 });
 
 test('applyOps 拒绝未知 op 和非法输入', () => {

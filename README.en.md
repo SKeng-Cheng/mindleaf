@@ -54,6 +54,7 @@ is closed.
 | **Hover for notes** | rest the mouse on a node and its note pops up next to the cursor (delay configurable) |
 | **Paste images** | ⌘V a screenshot straight into a note, on a node or on the whole map; each stays a small icon until you expand it |
 | **Map-level notes** | with nothing selected you edit notes, annotations and images for the whole map |
+| **Share files** | share local docx / ppt / pdf / images: view in the browser, and edit Office files over WebDAV with the guest's own app — still your original file on disk |
 | **Tags + outline** | tag maps and filter by tag; switch the sidebar to an indented outline, click to jump, collapse in place |
 | **Styling** | box / text / line colours, font size, font, box width and height — apply to one node or a whole branch |
 | **Relations** | dashed links across branches; click one to edit its label, colour, note or annotation |

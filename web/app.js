@@ -225,6 +225,7 @@ const state = {
   styleScope: 'node', // node | subtree
   selectedEdgeId: null, // 选中的关联线
   expandedImages: new Set(), // 展开的图片 id（可以同时展开多张）
+  sharedFiles: [], // 当前图的分享文件清单（带磁盘状态）
   linkFrom: null, // 正在连线的起点节点 id
   tagFilter: '',
   outlineQuery: '',
@@ -646,6 +647,12 @@ function renderInspector(force = false) {
   }
   const node = state.selectedId ? getNode(state.doc, state.selectedId) : null;
   body.innerHTML = node ? nodeInspectorHtml(node) : emptyInspectorHtml();
+  // 图面板：异步补上"分享文件"清单（列表需要磁盘状态，不能同步渲染）
+  if (!node) {
+    state.sharedFiles = [];
+    renderSharedSection();
+    loadSharedFiles();
+  }
 }
 
 /** 关联线面板：说明、备注、批注、颜色、端点、删除。 */
@@ -731,6 +738,13 @@ function emptyInspectorHtml() {
           <button type="button" class="btn ghost xs" data-act="image-pick" title="也可以直接把图片粘到上面的备注框里">选图片…</button>
         </div>
         <div class="image-list">${images.length ? images.map((image, index) => imageItemHtml(image, index)).join('') : '<p class="image-empty">把图片直接粘到上面的备注框里（⌘V），或者点「选图片…」。</p>'}</div>
+      </section>
+      <section class="field">
+        <div class="image-head">
+          <span class="lab">分享文件 <span class="count" id="shared-count">${(state.sharedFiles ?? []).length}</span></span>
+          <button type="button" class="btn ghost xs" data-act="shared-add" title="从工作区挑一个文件">添加文件…</button>
+        </div>
+        <div class="share-list" id="shared-list"></div>
       </section>
       <section class="field">
         <div class="annotation-head">
@@ -2560,6 +2574,237 @@ function openImage(image) {
   window.open(`/api/assets?path=${encodeURIComponent(image.path)}`, '_blank', 'noopener');
 }
 
+/* ---- 分享文件（本机真实文件，对方通过服务读写，不存副本） ---- */
+
+const SHARE_EXT_ICON = {
+  '.doc': '📄', '.docx': '📄', '.md': '📝', '.txt': '📝', '.pdf': '📕',
+  '.ppt': '📊', '.pptx': '📊', '.xls': '📊', '.xlsx': '📊',
+  '.png': '🖼', '.jpg': '🖼', '.jpeg': '🖼', '.gif': '🖼', '.webp': '🖼', '.svg': '🖼',
+};
+const TEXT_EXT = ['.md', '.txt', '.csv', '.json', '.yml', '.yaml', '.js', '.mjs', '.ts', '.py', '.tex', '.html', '.css'];
+const OFFICE_EXT = ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.pages', '.key', '.numbers'];
+
+const fileExt = (filePath) => {
+  const index = String(filePath).lastIndexOf('.');
+  return index >= 0 ? String(filePath).slice(index).toLowerCase() : '';
+};
+const isTextExt = (filePath) => TEXT_EXT.includes(fileExt(filePath));
+const isImageExt = (filePath) => ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'].includes(fileExt(filePath));
+const isOfficeExt = (filePath) => OFFICE_EXT.includes(fileExt(filePath));
+const formatSize = (bytes) => {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+};
+
+async function loadSharedFiles() {
+  if (!state.slug) return [];
+  try {
+    const data = await api(`/api/shared?map=${encodeURIComponent(state.slug)}`);
+    state.sharedFiles = Array.isArray(data.files) ? data.files : [];
+  } catch {
+    state.sharedFiles = [];
+  }
+  renderSharedSection();
+  return state.sharedFiles;
+}
+
+function sharedRowHtml(file) {
+  const icon = SHARE_EXT_ICON[file.ext] ?? '📎';
+  const editable = file.mode === 'rw';
+  return `
+    <div class="share-row" data-file-id="${esc(file.id)}">
+      <span class="share-icon" aria-hidden="true">${icon}</span>
+      <button type="button" class="share-name" data-act="shared-open" data-id="${esc(file.id)}" title="${esc(file.path)}">
+        <span class="share-label">${esc(file.label || file.path.split('/').pop())}</span>
+        <span class="share-path">${esc(file.path)} · ${formatSize(file.size)}${file.exists ? '' : ' · 文件丢了'}</span>
+      </button>
+      <button type="button" class="share-mode${editable ? ' is-rw' : ''}" data-act="shared-mode" data-id="${esc(file.id)}"
+        title="${editable ? '对方可以改（点一下改成只读）' : '对方只能看（点一下允许修改）'}">${editable ? '可编辑' : '只读'}</button>
+      <button type="button" class="icon-btn xs" data-act="shared-remove" data-id="${esc(file.id)}" title="移出分享清单">${ICON.x}</button>
+    </div>`;
+}
+
+/** 只刷新"分享文件"这一块，别整块重绘。 */
+function renderSharedSection() {
+  const list = document.querySelector('#shared-list');
+  if (!list) return;
+  const files = state.sharedFiles ?? [];
+  const count = document.querySelector('#shared-count');
+  if (count) count.textContent = String(files.length);
+  list.innerHTML = files.length
+    ? files.map((file) => sharedRowHtml(file)).join('')
+    : '<p class="image-empty">还没有分享文件。点「添加文件…」，把 docx / pptx / pdf / 图片加进来。</p>';
+}
+
+async function addSharedPath(filePath) {
+  const data = await api('/api/shared', { method: 'POST', body: { map: state.slug, action: 'add', path: filePath } });
+  state.sharedFiles = data.files ?? [];
+  renderSharedSection();
+  toast('已加入分享清单', { tone: 'ok' });
+}
+
+async function removeSharedFile(id) {
+  const data = await api('/api/shared', { method: 'POST', body: { map: state.slug, action: 'remove', id } });
+  state.sharedFiles = data.files ?? [];
+  renderSharedSection();
+  toast('已移出分享清单（磁盘上的文件不动）', { tone: 'ok' });
+}
+
+async function toggleSharedMode(id) {
+  const current = (state.sharedFiles ?? []).find((file) => file.id === id);
+  if (!current) return;
+  const next = current.mode === 'rw' ? 'ro' : 'rw';
+  const data = await api('/api/shared', { method: 'POST', body: { map: state.slug, action: 'mode', id, mode: next } });
+  state.sharedFiles = data.files ?? [];
+  renderSharedSection();
+  toast(next === 'rw' ? '已允许对方修改这个文件' : '已改成只读');
+}
+
+/* ---- 选文件（服务端目录浏览） ---- */
+
+let browseDir = '';
+
+async function openBrowserDialog() {
+  browseDir = '';
+  await renderBrowse();
+  openDialog($('#dlg-browse'));
+}
+
+async function renderBrowse() {
+  const list = $('#browse-list');
+  const pathLabel = $('#browse-path');
+  list.innerHTML = '<p class="image-empty">加载中…</p>';
+  let data;
+  try {
+    data = await api(`/api/shared/browse?dir=${encodeURIComponent(browseDir)}`);
+  } catch (error) {
+    list.innerHTML = `<p class="image-empty">${esc(error.message)}</p>`;
+    return;
+  }
+  browseDir = data.dir ?? '';
+  pathLabel.textContent = browseDir ? `/${browseDir}` : '/（工作区根目录）';
+  const rows = [];
+  if (browseDir) {
+    const parent = browseDir.split('/').slice(0, -1).join('/');
+    rows.push(`<button type="button" class="browse-row is-dir" data-browse-dir="${esc(parent)}"><span class="browse-icon">↩</span><span class="browse-name">..（上一级）</span></button>`);
+  }
+  for (const entry of data.entries ?? []) {
+    const childPath = browseDir ? `${browseDir}/${entry.name}` : entry.name;
+    rows.push(
+      entry.dir
+        ? `<button type="button" class="browse-row is-dir" data-browse-dir="${esc(childPath)}"><span class="browse-icon">📁</span><span class="browse-name">${esc(entry.name)}</span></button>`
+        : `<button type="button" class="browse-row" data-browse-file="${esc(childPath)}"><span class="browse-icon">${SHARE_EXT_ICON[fileExt(entry.name)] ?? '📎'}</span><span class="browse-name">${esc(entry.name)}</span><span class="browse-size">${formatSize(entry.size)}</span></button>`,
+    );
+  }
+  list.innerHTML = rows.length ? rows.join('') : '<p class="image-empty">这个目录是空的</p>';
+}
+
+/* ---- 查看 / 编辑 ---- */
+
+let sharedCurrent = null; // { id, path, mode, mtime, kind }
+
+async function openSharedFile(id) {
+  const file = (state.sharedFiles ?? []).find((item) => item.id === id);
+  if (!file) return;
+  sharedCurrent = { id, path: file.path, mode: file.mode, label: file.label, mtime: 0, kind: 'loading' };
+  $('#shared-title').textContent = file.label || file.path.split('/').pop();
+  $('#shared-meta').textContent = `${file.path} · ${formatSize(file.size)} · ${file.mode === 'rw' ? '可编辑' : '只读'}`;
+  $('#shared-body').innerHTML = '<p class="image-empty">加载中…</p>';
+  $('#btn-shared-save').hidden = true;
+  $('#shared-hint').textContent = '';
+  openDialog($('#dlg-shared'));
+  await renderSharedView();
+}
+
+async function renderSharedView() {
+  const file = sharedCurrent;
+  if (!file) return;
+  const base = `/api/shared`;
+  const qs = `map=${encodeURIComponent(state.slug)}&id=${encodeURIComponent(file.id)}`;
+  const body = $('#shared-body');
+  const hint = $('#shared-hint');
+  const ext = fileExt(file.path);
+
+  if (isImageExt(file.path)) {
+    file.kind = 'image';
+    body.innerHTML = `<div class="shared-image"><img src="${base}/raw?${qs}" alt="${esc(file.path)}"></div>`;
+    hint.textContent = '图片只能看，不能在这里改。';
+    $('#btn-shared-save').hidden = true;
+    return;
+  }
+  if (ext === '.pdf') {
+    file.kind = 'pdf';
+    body.innerHTML = `<iframe class="shared-frame" src="${base}/raw?${qs}" title="PDF 预览"></iframe>`;
+    hint.textContent = 'PDF 在浏览器里只能看。要改请用「复制网盘地址」挂载后，用本机 PDF 工具打开。';
+    $('#btn-shared-save').hidden = true;
+    return;
+  }
+  if (isOfficeExt(file.path)) {
+    file.kind = 'office';
+    body.innerHTML = `<div class="shared-image"><img src="${base}/preview?${qs}" alt="${esc(file.path)}" onerror="this.replaceWith(Object.assign(document.createElement('p'),{className:'image-empty',textContent:'这台机器没有生成预览的工具，直接点「复制网盘地址」用本机 Office 打开。'}))"></div>`;
+    hint.textContent =
+      '浏览器里改不了 Office 文件。点「复制网盘地址」，把它挂载到 Finder / 资源管理器，然后用你电脑上的 Word / PPT 直接打开编辑 —— 保存回去的还是这台机器上的原文件，不会在你那边留副本。';
+    $('#btn-shared-save').hidden = true;
+    return;
+  }
+  if (isTextExt(file.path)) {
+    try {
+      const data = await api(`${base}/text?${qs}`);
+      file.kind = 'text';
+      file.mtime = data.mtime;
+      body.innerHTML = `<textarea class="shared-editor" id="shared-editor" spellcheck="false"></textarea>`;
+      $('#shared-editor').value = data.content;
+      const editable = file.mode === 'rw';
+      $('#btn-shared-save').hidden = !editable;
+      hint.textContent = editable
+        ? '直接改，⌘S 保存（会先备份旧版本）。'
+        : '这个文件是只读分享，改不了；想改先在列表里切成「可编辑」。';
+    } catch (error) {
+      body.innerHTML = `<p class="image-empty">${esc(error.message)}</p>`;
+      $('#btn-shared-save').hidden = true;
+    }
+    return;
+  }
+  // 其它类型：给下载 + 网盘提示
+  file.kind = 'other';
+  body.innerHTML = `<p class="image-empty">这种文件没法在浏览器里预览。点「复制网盘地址」挂载后用本机程序打开，或者关闭后在 Finder 里看。</p>`;
+  hint.textContent = '';
+  $('#btn-shared-save').hidden = true;
+}
+
+async function saveSharedText() {
+  const file = sharedCurrent;
+  if (!file || file.kind !== 'text') return;
+  const content = $('#shared-editor')?.value ?? '';
+  const button = $('#btn-shared-save');
+  button.disabled = true;
+  try {
+    const data = await api('/api/shared/text', {
+      method: 'PUT',
+      body: { map: state.slug, id: file.id, content, mtime: file.mtime },
+    });
+    file.mtime = data.file.mtime;
+    toast('已保存到原文件', { tone: 'ok' });
+    await loadSharedFiles();
+  } catch (error) {
+    if (error.code === 'conflict') toast('文件在磁盘上被改过了，请点「重新加载」', { tone: 'warn' });
+    else toast(error.message, { tone: 'error' });
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function copyDavInfo() {
+  const dav = state.boot?.dav;
+  if (!dav) {
+    toast('拿不到网盘地址（服务没起或没有局域网地址）', { tone: 'warn' });
+    return;
+  }
+  await copyText(`地址：${dav.url}\n用户名：${dav.user}\n密码：${dav.token || '（无口令）'}`);
+}
+
 /* ---- 局域网分享 ---- */
 
 /** 当前导图的分享链接：优先局域网地址，没有就退回本机地址；带上当前导图。 */
@@ -2717,6 +2962,18 @@ async function handleInspectorAction(act, element) {
       break;
     case 'image-pick':
       pickImageFile();
+      break;
+    case 'shared-add':
+      openBrowserDialog();
+      break;
+    case 'shared-open':
+      openSharedFile(element.dataset.id);
+      break;
+    case 'shared-remove':
+      removeSharedFile(element.dataset.id);
+      break;
+    case 'shared-mode':
+      toggleSharedMode(element.dataset.id);
       break;
     case 'image-expand':
       expandImage(element.dataset.imageId);
@@ -3175,6 +3432,33 @@ function bindEvents() {
     if (state.doc) applyTransform();
   });
   $('#btn-share').addEventListener('click', openShareDialog);
+
+  // ---- 分享文件 ----
+  $('#browse-list').addEventListener('click', async (event) => {
+    const dirButton = event.target.closest('[data-browse-dir]');
+    if (dirButton) {
+      browseDir = dirButton.dataset.browseDir;
+      await renderBrowse();
+      return;
+    }
+    const fileButton = event.target.closest('[data-browse-file]');
+    if (!fileButton) return;
+    try {
+      await addSharedPath(fileButton.dataset.browseFile);
+      closeDialog($('#dlg-browse'));
+    } catch (error) {
+      toast(error.message, { tone: 'error' });
+    }
+  });
+  $('#btn-shared-save').addEventListener('click', saveSharedText);
+  $('#btn-shared-reload').addEventListener('click', renderSharedView);
+  $('#btn-shared-dav').addEventListener('click', copyDavInfo);
+  $('#shared-body').addEventListener('keydown', (event) => {
+    if ((event.metaKey || event.ctrlKey) && String(event.key).toLowerCase() === 's') {
+      event.preventDefault();
+      saveSharedText();
+    }
+  });
   $('#btn-share-copy').addEventListener('click', copyShareUrl);
   $('#btn-link-cancel').addEventListener('click', cancelLink);
   $('#btn-settings').addEventListener('click', openSettingsDialog);

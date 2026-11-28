@@ -36,6 +36,8 @@ export const BOX_HEIGHT_MIN = 24;
 export const BOX_HEIGHT_MAX = 500;
 /** 批注是写给 AI 的修改要求，允许比备注长一些。 */
 export const ANNOTATION_MAX = 4000;
+/** 分享文件清单上限。 */
+export const SHARED_FILES_MAX = 50;
 /** 单个节点最多挂多少张附图。 */
 export const IMAGES_MAX = 20;
 /**
@@ -223,6 +225,35 @@ export function normalizeImages(raw) {
   return out;
 }
 
+/**
+ * 分享文件清单：[{ id, path, label?, mode }]
+ * path 相对 workspaceDir；mode = rw（对方可改）/ ro（只看）。
+ */
+export function normalizeSharedFiles(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seenPath = new Set();
+  const seenId = new Set();
+  const out = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const filePath = normalizeImagePath(item.path); // 同样的"只接受相对路径"规则
+    if (!filePath || seenPath.has(filePath)) continue;
+    seenPath.add(filePath);
+    let id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : '';
+    if (!id || seenId.has(id)) {
+      do {
+        id = `sf_${Math.random().toString(36).slice(2, 8)}`;
+      } while (seenId.has(id));
+    }
+    seenId.add(id);
+    const file = { id, path: filePath, mode: item.mode === 'rw' ? 'rw' : 'ro' };
+    if (typeof item.label === 'string' && item.label.trim()) file.label = item.label.trim().slice(0, 120);
+    out.push(file);
+    if (out.length >= SHARED_FILES_MAX) break;
+  }
+  return out;
+}
+
 function normalizeJournal(raw) {
   if (!Array.isArray(raw)) return [];
   const entries = [];
@@ -367,6 +398,8 @@ export function normalizeDoc(input) {
   if (docAnnotation) doc.annotation = docAnnotation;
   const docImages = normalizeImages(input.images);
   if (docImages.length) doc.images = docImages;
+  const shared = normalizeSharedFiles(input.sharedFiles);
+  if (shared.length) doc.sharedFiles = shared;
 
   const journalMax = doc.journal.reduce((max, entry) => Math.max(max, entry.rev), 0);
   doc.rev = Math.max(doc.rev, journalMax);

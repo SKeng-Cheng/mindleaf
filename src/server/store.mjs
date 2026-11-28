@@ -10,6 +10,8 @@
  *  - 每次写入把上一版快照进 .history/，方便回滚和"人类改了什么"的 diff。
  */
 import fs from 'node:fs';
+import os from 'node:os';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import {
   DocError,
@@ -27,6 +29,9 @@ import { docFromTemplate, listTemplates, getTemplate } from './templates.mjs';
 
 export const CONFIG_FILE = 'mindleaf.json';
 export const MAP_EXT = '.mindmap.json';
+/** 系统缩略图工具（macOS）。 */
+const QLMANAGE = '/usr/bin/qlmanage';
+const QLMANAGE_TMP = os.tmpdir();
 const HISTORY_LIMIT = 30;
 
 const nowISO = () => new Date().toISOString();
@@ -159,6 +164,133 @@ export class Store {
       path: path.relative(this.projectDir, file).split(path.sep).join('/'),
       bytes: buffer.length,
     };
+  }
+
+  /* ---------------- 分享文件 ---------------- */
+
+  /** 导出 IPC / 预览缓存目录。 */
+  get backupDir() {
+    return path.join(this.projectDir, '.mindleaf', 'file-backups');
+  }
+
+  get previewDir() {
+    return path.join(this.projectDir, '.mindleaf', 'previews');
+  }
+
+  /** 相对 workspaceDir 的路径 -> 绝对路径（不许 ../、不许绝对路径、必须存在）。 */
+  resolveSharedPath(rel) {
+    const text = String(rel ?? '').replace(/\\/g, '/');
+    if (!text || text.startsWith('/') || /^[a-zA-Z]:/.test(text)) return null;
+    if (text.split('/').includes('..')) return null;
+    const root = path.resolve(this.workspaceDir ?? this.projectDir);
+    const abs = path.resolve(root, text);
+    if (abs !== root && !abs.startsWith(root + path.sep)) return null;
+    return abs;
+  }
+
+  /** 分享清单里的一条 + 磁盘状态。 */
+  describeSharedFile(entry) {
+    const abs = this.resolveSharedPath(entry.path);
+    const info = { ...entry, abs, exists: false, size: 0, mtime: 0, ext: path.extname(entry.path).toLowerCase() };
+    if (!abs) return { ...info, error: '路径不合法' };
+    try {
+      const stat = fs.statSync(abs);
+      if (stat.isFile()) {
+        info.exists = true;
+        info.size = stat.size;
+        info.mtime = Math.round(stat.mtimeMs);
+      }
+    } catch {
+      /* 不存在 */
+    }
+    return info;
+  }
+
+  /** 列出某张图分享的所有文件（带磁盘状态）。 */
+  sharedFiles(slug) {
+    const { doc } = this.read(slug);
+    return (doc.sharedFiles ?? []).map((entry) => this.describeSharedFile(entry));
+  }
+
+  /** 按 id 取分享项并校验它在磁盘上。 */
+  needSharedFile(slug, id) {
+    const { doc } = this.read(slug);
+    const entry = (doc.sharedFiles ?? []).find((item) => item.id === id);
+    if (!entry) throw new StoreError(`分享清单里没有这个文件: ${id}`, 'not_found');
+    const info = this.describeSharedFile(entry);
+    if (!info.exists) throw new StoreError(`文件不存在: ${entry.path}`, 'not_found');
+    return { doc, info };
+  }
+
+  /** 读一个分享文件（文本返回内容，二进制让调用方走 raw）。 */
+  readSharedText(slug, id) {
+    const { info } = this.needSharedFile(slug, id);
+    if (info.size > 2 * 1024 * 1024) throw new StoreError('文件太大，无法在网页里编辑（上限 2 MB）', 'too_large');
+    const buffer = fs.readFileSync(info.abs);
+    if (buffer.subarray(0, 8000).includes(0)) throw new StoreError('这是二进制文件，不能当文本编辑', 'invalid_argument');
+    return { ...info, content: buffer.toString('utf8') };
+  }
+
+  /** 写回一个分享文件：只允许 rw、必须是文本、先备份、mtime 不一致就报冲突。 */
+  writeSharedText(slug, id, content, baseMtime) {
+    const { info } = this.needSharedFile(slug, id);
+    if (info.mode !== 'rw') throw new StoreError('这个文件是只读分享，不能修改', 'forbidden');
+    const text = String(content ?? '');
+    if (Buffer.byteLength(text) > 2 * 1024 * 1024) throw new StoreError('内容太大（上限 2 MB）', 'too_large');
+    if (Number.isFinite(baseMtime) && baseMtime > 0 && Math.abs(info.mtime - Number(baseMtime)) > 1000) {
+      const error = new StoreError('文件在磁盘上已经被改过了，请刷新后再保存', 'conflict');
+      error.current = { mtime: info.mtime, size: info.size };
+      throw error;
+    }
+    this.#backupSharedFile(slug, info);
+    // 原子写：临时文件 + rename
+    const tmp = `${info.abs}.mindleaf-tmp`;
+    fs.writeFileSync(tmp, text, 'utf8');
+    fs.renameSync(tmp, info.abs);
+    const after = this.describeSharedFile(info);
+    return { id: info.id, path: info.path, size: after.size, mtime: after.mtime };
+  }
+
+  #backupSharedFile(slug, info) {
+    try {
+      const dir = path.join(this.backupDir, slug.replace(/[^\w\u4e00-\u9fa5.-]/g, '_'));
+      fs.mkdirSync(dir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const ext = path.extname(info.path) || '.txt';
+      fs.copyFileSync(info.abs, path.join(dir, `${info.id}-${stamp}${ext}`));
+      // 只留最近 20 份
+      const kept = fs.readdirSync(dir).sort();
+      for (const name of kept.slice(0, Math.max(0, kept.length - 20))) {
+        fs.rmSync(path.join(dir, name), { force: true });
+      }
+    } catch {
+      /* 备份失败不阻塞写入 */
+    }
+  }
+
+  /** 用系统 qlmanage 生成预览图（缓存到 .mindleaf/previews）。 */
+  async previewSharedFile(slug, id) {
+    const { info } = this.needSharedFile(slug, id);
+    const key = `${slug.replace(/[^\w\u4e00-\u9fa5.-]/g, '_')}-${info.id}-${info.mtime}`;
+    const png = path.join(this.previewDir, `${key}.png`);
+    if (fs.existsSync(png)) return { png, cached: true };
+    if (!fs.existsSync(QLMANAGE)) throw new StoreError('这台机器没有 qlmanage，无法生成预览', 'unsupported');
+    fs.mkdirSync(this.previewDir, { recursive: true });
+    const outDir = fs.mkdtempSync(path.join(QLMANAGE_TMP, 'mindleaf-preview-'));
+    try {
+      await new Promise((resolve, reject) => {
+        const child = spawn(QLMANAGE, ['-t', '-s', '1600', '-o', outDir, info.abs], { stdio: 'ignore' });
+        child.on('error', reject);
+        child.on('exit', (code) => (code === 0 ? resolve() : reject(new StoreError(`qlmanage 失败（退出码 ${code}）`, 'error'))));
+        setTimeout(() => child.kill('SIGKILL'), 20000);
+      });
+      const produced = fs.readdirSync(outDir).find((name) => name.toLowerCase().endsWith('.png'));
+      if (!produced) throw new StoreError('没有生成预览图', 'not_found');
+      fs.copyFileSync(path.join(outDir, produced), png);
+      return { png, cached: false };
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
   }
 
   /** 把导图里的相对图片路径解析成绝对路径（并挡住路径穿越）。 */

@@ -1041,8 +1041,8 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .share-btn[hidden] { display: none; }
 
 /* 分享对话框里的地址行 */
-.share-row { display: flex; gap: 8px; align-items: center; }
-.share-row .input { flex: 1 1 auto; min-width: 0; font-size: 12px; }
+.share-url-row { display: flex; gap: 8px; align-items: center; }
+.share-url-row .input { flex: 1 1 auto; min-width: 0; font-size: 12px; }
 /* 地址用两行 textarea 显示，长链接不会被截断（换行显示，复制拿到的是完整地址） */
 .share-url {
   height: auto;
@@ -1054,7 +1054,7 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
   overflow: hidden;
   cursor: text;
 }
-.share-row .btn { flex: none; }
+.share-url-row .btn { flex: none; }
 #share-hint { margin-top: 10px; }
 
 /* ---------- 关联线：命中区、选中态、连线模式 ---------- */
@@ -1173,6 +1173,91 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
   max-width: calc(290px * var(--panel-zoom, 1));
 }
 .note-tooltip-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- 分享文件 ---------- */
+.share-list { display: flex; flex-direction: column; gap: 6px; }
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+.share-icon { flex: none; font-size: 16px; line-height: 1; }
+.share-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.share-label { font-size: 12px; font-weight: 550; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-path { font-size: 10.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-mode {
+  flex: none;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.share-mode.is-rw { border-color: var(--accent-ring); color: var(--accent-strong); background: var(--accent-soft); }
+
+/* 选文件的目录浏览 */
+.browse-path { margin: 4px 0 8px; font-size: 11.5px; color: var(--ink-3); font-family: ui-monospace, monospace; }
+.browse-list { display: flex; flex-direction: column; gap: 2px; max-height: 52vh; overflow: auto; margin-bottom: 8px; }
+.browse-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.browse-row:hover { background: var(--panel-2); }
+.browse-row.is-dir .browse-name { font-weight: 550; }
+.browse-icon { flex: none; width: 18px; text-align: center; }
+.browse-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-size { flex: none; color: var(--ink-3); font-size: 10.5px; }
+
+/* 查看 / 编辑分享文件 */
+.shared-meta { margin: 2px 0 10px; font-size: 11.5px; color: var(--ink-3); }
+.shared-body { display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+.shared-image { display: flex; justify-content: center; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; }
+.shared-image img { max-width: 100%; max-height: 56vh; object-fit: contain; }
+.shared-frame { width: 100%; height: 58vh; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+.shared-editor {
+  width: 100%;
+  height: 52vh;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+  resize: vertical;
+  tab-size: 2;
+}
 
 /* ---------- 节点截图（贴在备注下面） ---------- */
 .image-head {

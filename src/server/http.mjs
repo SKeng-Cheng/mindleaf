@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, StoreError } from './store.mjs';
 import { accessEntries } from './access.mjs';
+import { handleDav } from './dav.mjs';
 import { fromMarkdown, guessTitle, toMarkdown } from '../core/markdown.mjs';
 import { outline, normalizeDoc, docStats, eachNode, rootOf } from '../core/doc.mjs';
 import { EXPORT_FORMATS } from '../export/exporters.mjs';
@@ -203,18 +204,24 @@ export async function createApp(options = {}) {
     return accessEntries({ port, listenHost: host, token: options.token ?? '' });
   };
 
-  const state = () => ({
-    ...store.summary(),
-    access: accessInfo(),
-    engines: {
-      chromium: engines.chromium.length > 0,
-      chromiumPath: engines.chromium[0] ?? null,
-      png: engines.png,
-      pdf: engines.pdf,
-    },
-    formats: EXPORT_FORMATS,
-    version: readVersion(),
-  });
+  const state = () => {
+    const access = accessInfo();
+    const base = (access.lan || access.local || '').replace(/\/\?.*$/, '');
+    return {
+      ...store.summary(),
+      access,
+      // 网盘挂载入口：给 docx/pptx/pdf 这类"浏览器里改不了"的文件用本机 Office 编辑
+      dav: base ? { url: `${base}/dav/`, user: 'mindleaf', token: options.token ?? '' } : null,
+      engines: {
+        chromium: engines.chromium.length > 0,
+        chromiumPath: engines.chromium[0] ?? null,
+        png: engines.png,
+        pdf: engines.pdf,
+      },
+      formats: EXPORT_FORMATS,
+      version: readVersion(),
+    };
+  };
 
   route('GET', /^\/api\/health$/, (req, res) => json(res, 200, { ok: true, uptime: process.uptime() }));
   // 主动关闭服务（`mm stop` 走这里，比直接 kill 干净）
@@ -383,6 +390,98 @@ export async function createApp(options = {}) {
     });
   });
   // 文件/代码链接预览：只允许读项目目录内的文件
+  /* ---------------- 分享文件 ---------------- */
+
+  // 清单（带磁盘状态）
+  route('GET', /^\/api\/shared$/, (req, res, params, url) => {
+    const slug = url.searchParams.get('map');
+    if (!slug) throw new StoreError('缺少 map 参数', 'invalid_argument');
+    json(res, 200, { files: store.sharedFiles(decodeURIComponent(slug)) });
+  });
+
+  // 原始文件（图片 / PDF / Office 都直接给浏览器或下载器）
+  route('GET', /^\/api\/shared\/raw$/, (req, res, params, url) => {
+    const slug = url.searchParams.get('map');
+    const id = url.searchParams.get('id');
+    const { info } = store.needSharedFile(decodeURIComponent(slug ?? ''), id ?? '');
+    serveFile(res, info.abs, { noCache: true, download: url.searchParams.get('download') === '1' });
+  });
+
+  // 文本内容（给内置编辑器）
+  route('GET', /^\/api\/shared\/text$/, (req, res, params, url) => {
+    const slug = url.searchParams.get('map');
+    const id = url.searchParams.get('id');
+    const data = store.readSharedText(decodeURIComponent(slug ?? ''), id ?? '');
+    json(res, 200, { id: data.id, path: data.path, label: data.label ?? null, mode: data.mode, size: data.size, mtime: data.mtime, content: data.content });
+  });
+
+  // 写回文本
+  route('PUT', /^\/api\/shared\/text$/, async (req, res) => {
+    const body = await readBody(req);
+    const saved = store.writeSharedText(decodeURIComponent(body.map ?? ''), body.id ?? '', body.content ?? '', Number(body.mtime));
+    json(res, 200, { ok: true, file: saved });
+  });
+
+  // Office / PDF 的预览图（qlmanage 生成，缓存在 .mindleaf/previews）
+  route('GET', /^\/api\/shared\/preview$/, async (req, res, params, url) => {
+    const slug = url.searchParams.get('map');
+    const id = url.searchParams.get('id');
+    const { png } = await store.previewSharedFile(decodeURIComponent(slug ?? ''), id ?? '');
+    serveFile(res, png, { noCache: false });
+  });
+
+  // 浏览工作区目录（添加分享文件时用）
+  route('GET', /^\/api\/shared\/browse$/, (req, res, params, url) => {
+    const root = store.workspaceDir ?? store.projectDir;
+    const rel = String(url.searchParams.get('dir') ?? '').replace(/\\/g, '/');
+    if (rel.split('/').includes('..') || rel.startsWith('/')) throw new StoreError('非法目录', 'invalid_argument');
+    const abs = path.resolve(root, rel);
+    if (abs !== root && !abs.startsWith(path.resolve(root) + path.sep)) throw new StoreError('非法目录', 'invalid_argument');
+    let stat;
+    try {
+      stat = fs.statSync(abs);
+    } catch {
+      throw new StoreError(`目录不存在: ${rel || '.'}`, 'not_found');
+    }
+    if (!stat.isDirectory()) throw new StoreError('不是目录', 'invalid_argument');
+    const IGNORE = new Set(['.git', 'node_modules', '.mindleaf', '.history', 'dist', 'exports']);
+    const entries = fs
+      .readdirSync(abs, { withFileTypes: true })
+      .filter((entry) => !IGNORE.has(entry.name) && !entry.name.startsWith('.'))
+      .map((entry) => ({
+        name: entry.name,
+        dir: entry.isDirectory(),
+        size: entry.isFile() ? safeSize(path.join(abs, entry.name)) : 0,
+      }))
+      .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name))
+      .slice(0, 500);
+    json(res, 200, { dir: rel, path: rel ? `${path.relative(root, abs).split(path.sep).join('/')}` : '', entries });
+  });
+
+  // 添加 / 移除分享文件
+  route('POST', /^\/api\/shared$/, async (req, res) => {
+    const body = await readBody(req);
+    const slug = decodeURIComponent(body.map ?? '');
+    const ops = [];
+    if (body.action === 'add') {
+      const { doc } = store.read(slug);
+      const info = store.describeSharedFile({ path: String(body.path ?? ''), mode: body.mode === 'rw' ? 'rw' : 'ro' });
+      if (!info.exists) throw new StoreError(`文件不存在: ${body.path}`, 'not_found');
+      if ((doc.sharedFiles ?? []).some((item) => item.path === info.path)) {
+        throw new StoreError('这个文件已经在分享清单里了', 'duplicate');
+      }
+      ops.push({ op: 'addSharedFile', path: info.path, label: body.label, mode: body.mode === 'rw' ? 'rw' : 'ro' });
+    } else if (body.action === 'remove') {
+      ops.push({ op: 'removeSharedFile', id: body.id });
+    } else if (body.action === 'mode') {
+      ops.push({ op: 'updateSharedFile', id: body.id, mode: body.mode === 'rw' ? 'rw' : 'ro' });
+    } else {
+      throw new StoreError('未知操作', 'invalid_argument');
+    }
+    const result = store.applyOps(slug, ops, { by: body.by ?? 'user', summary: body.action === 'add' ? '分享文件' : body.action === 'remove' ? '取消分享' : '修改分享权限' });
+    json(res, 200, { ok: true, result: result.results, files: store.sharedFiles(slug) });
+  });
+
   route('GET', /^\/api\/file$/, (req, res, params, url) => {
     const target = url.searchParams.get('path') ?? '';
     if (!target) throw new StoreError('缺少 path 参数', 'invalid_argument');
@@ -446,11 +545,37 @@ export async function createApp(options = {}) {
   }
 
   const requiredToken = typeof options.token === 'string' && options.token.trim() ? options.token.trim() : '';
+  /** WebDAV 的"名义锁"，只为让 Office 的保存流程顺畅。 */
+  const davLocks = new Map();
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? '127.0.0.1'}`);
     const pathname = decodeURIComponent(url.pathname);
     res.setHeader('x-mindleaf', '1');
+
+    // WebDAV：给 Finder / 资源管理器挂载用（Basic 口令 = 访问口令）。
+    // 判断用**原始**路径：反向规范化会吃掉 %2e%2e，导致穿越检查失效。
+    const rawPath = String(req.url ?? '/').split('?')[0];
+    if (rawPath === '/dav' || rawPath.startsWith('/dav/')) {
+      const basic = (() => {
+        const raw = req.headers.authorization ?? '';
+        if (!raw.toLowerCase().startsWith('basic ')) return '';
+        try {
+          const decoded = Buffer.from(raw.slice(6), 'base64').toString('utf8');
+          return decoded.slice(decoded.indexOf(':') + 1);
+        } catch {
+          return '';
+        }
+      })();
+      const provided = tokenFromRequest(req, url) || basic || (req.headers.authorization ?? '').replace(/^Basic /i, '');
+      if (requiredToken && provided !== requiredToken) {
+        res.writeHead(401, { 'www-authenticate': 'Basic realm="Mindleaf", charset="UTF-8"', 'content-type': 'text/plain; charset=utf-8' });
+        res.end('需要访问口令（Basic 认证：用户名随意，密码是口令）');
+        return;
+      }
+      await handleDav({ req, res, store, locks: davLocks, rawPath });
+      return;
+    }
 
     // 口令校验：只放行健康检查（用于判断服务是否起来），其余一律要口令
     if (requiredToken && pathname !== '/api/health') {
@@ -501,7 +626,13 @@ export async function createApp(options = {}) {
       fail(res, 404, 'not_found', `找不到 ${pathname}`);
     } catch (error) {
       if (error instanceof StoreError) {
-        fail(res, error.code === 'not_found' ? 404 : error.code === 'conflict' ? 409 : 400, error.code, error.message, error.current ? { current: error.current } : {});
+        const status =
+          error.code === 'not_found' ? 404
+            : error.code === 'conflict' || error.code === 'duplicate' ? 409
+              : error.code === 'forbidden' ? 403
+                : error.code === 'unsupported' ? 501
+                  : 400;
+        fail(res, status, error.code, error.message, error.current ? { current: error.current } : {});
         return;
       }
       fail(res, 500, 'internal_error', error?.message ?? String(error));

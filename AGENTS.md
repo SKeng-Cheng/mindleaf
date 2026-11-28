@@ -32,6 +32,7 @@
 | `update_map` | 改标题 / 布局 / 主题 / 标签（`tags`）/ 整图备注与批注（`note` / `annotation`） |
 | `list_tags` | 看所有标签及各自数量 |
 | `list_annotations` | **看人类给这个节点留的批注（修改要求）**，不给 map 就扫全部 |
+| `list_shared_files` / `read_shared_file` / `write_shared_file` | 读写人类分享的真实文件（docx / pdf / md…）；写只对 mode=rw 生效，且会先备份 |
 | `list_fonts` | 看可用字体键名（系统字体，配色用） |
 | `export_map` | 导出 png / jpg / pdf / svg / md / json / html |
 | `import_markdown` | 用 Markdown 大纲建图或覆盖 |
@@ -106,6 +107,8 @@ $MM edge-set 项目规划 e_ab12c --label 影响排期 --annotation "这条依�
   清空后标记自动消失。`note` 是人给自己看的备注，画布上不显示标记。
 - **整张图也能有** `note` / `annotation` / `images`（在文档根上，不在节点里）：给 AI 的整图批注
   id 记为 `@map`，处理完用 `update_map` 的 `annotation: ""` 清掉。
+- `sharedFiles` 是分享出去的**本机真实文件**：`{ id, path, label?, mode }`，path 相对 workspaceDir，
+  mode 是 rw / ro。读写走 `read_shared_file` / `write_shared_file`（会自动备份），不要绕过它直接改文件。
 - `images` 是贴在节点（或整张图）上的图片：只存相对项目根的路径（如 `maps/.assets/<slug>/x.png`），
   文件本身在磁盘上。`read_map` 的 outline 会用 `🖼` 列出这些路径，需要看图时直接读文件。
   加/删用 `apply_ops` 的 `addImage` / `removeImage`，不要整组覆盖 `images`。
@@ -133,6 +136,7 @@ src/server/             HTTP 服务（零依赖 node:http）
   store.mjs             项目、文件、加锁、历史、diff
   http.mjs              路由 + SSE + 静态资源 + 访问口令校验 + 附图上传
   access.mjs            访问入口：本机/局域网地址、口令生成与记忆
+  dav.mjs               WebDAV 网盘（只暴露分享清单里的文件，给 Office 就地编辑）
   templates.mjs         内置模板加载
 src/mcp/server.mjs      MCP stdio 服务器
 src/cli.mjs             命令行

@@ -615,6 +615,84 @@ test('浏览器：字号、字体、框尺寸，单节点与整枝字号', { ski
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });
 
+test('浏览器：分享文件 —— 清单、打开文本改并保存、Office 给网盘提示', { skip, timeout: 120000 }, async (t) => {
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mindleaf-e2e-share-'));
+  fs.writeFileSync(path.join(projectDir, CONFIG_FILE), JSON.stringify({ version: 1, mapsDir: 'maps', workspaceDir: '.' }), 'utf8');
+  fs.mkdirSync(path.join(projectDir, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(projectDir, 'docs', '方案.md'), '# 方案\n第一版\n', 'utf8');
+  fs.writeFileSync(path.join(projectDir, 'docs', '报告.docx'), Buffer.from([0x50, 0x4b, 3, 4, 0, 0]));
+  const session = await startServer({ projectDir, port: 0, host: '127.0.0.1' });
+  const { slug } = session.store.create({ title: '分享图', rootText: '根' });
+  session.store.applyOps(slug, [
+    { op: 'addSharedFile', path: 'docs/方案.md', mode: 'rw' },
+    { op: 'addSharedFile', path: 'docs/报告.docx', mode: 'ro' },
+  ], { by: 'user' });
+
+  const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);
+  t.after(async () => {
+    await browser.close();
+    await session.close();
+  });
+
+  // 取消选中 → 图面板 → 分享文件区
+  await browser.evaluate(`(async () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+  })()`);
+  const list = await browser.evaluate(`({
+    rows: [...document.querySelectorAll('.share-row .share-label')].map((el) => el.textContent),
+    modes: [...document.querySelectorAll('.share-mode')].map((el) => el.textContent.trim()),
+    count: document.querySelector('#shared-count')?.textContent,
+    hasAdd: !!document.querySelector('[data-act="shared-add"]'),
+  })`);
+  assert.deepEqual(list.rows, ['方案.md', '报告.docx'], `清单应有两行，实际 ${JSON.stringify(list.rows)}`);
+  assert.deepEqual(list.modes, ['可编辑', '只读']);
+  assert.equal(list.count, '2');
+  assert.equal(list.hasAdd, true, '应有「添加文件…」按钮');
+
+  // 打开文本文件 → 编辑器 → 改 → 保存
+  await browser.evaluate(`(async () => {
+    [...document.querySelectorAll('.share-row')].find((row) => row.textContent.includes('方案')).querySelector('.share-name').click();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+  })()`);
+  const editor = await browser.evaluate(`({
+    open: document.querySelector('#dlg-shared').open,
+    hasEditor: !!document.querySelector('#shared-editor'),
+    saveVisible: !document.querySelector('#btn-shared-save').hidden,
+    value: document.querySelector('#shared-editor')?.value,
+  })`);
+  assert.equal(editor.open, true);
+  assert.equal(editor.hasEditor, true, '文本文件应打开编辑器');
+  assert.equal(editor.saveVisible, true, '可编辑文件应显示保存按钮');
+  assert.match(editor.value, /第一版/);
+
+  await browser.evaluate(`(async () => {
+    const area = document.querySelector('#shared-editor');
+    area.value = ['# 方案', '浏览器里改的', ''].join(String.fromCharCode(10));
+    document.querySelector('#btn-shared-save').click();
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  })()`);
+  assert.equal(fs.readFileSync(path.join(projectDir, 'docs/方案.md'), 'utf8'), '# 方案\n浏览器里改的\n', '应写回原文件');
+  assert.ok(fs.readdirSync(path.join(projectDir, '.mindleaf/file-backups', slug)).length >= 1, '旧版本应备份');
+  await browser.evaluate(`document.querySelector('#dlg-shared').close()`);
+
+  // 打开 docx → 显示预览 + 网盘提示，不给保存按钮
+  await browser.evaluate(`(async () => {
+    [...document.querySelectorAll('.share-row')].find((row) => row.textContent.includes('报告')).querySelector('.share-name').click();
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+  })()`);
+  const office = await browser.evaluate(`({
+    saveHidden: document.querySelector('#btn-shared-save').hidden,
+    hint: document.querySelector('#shared-hint').textContent,
+    hasDavButton: !!document.querySelector('#btn-shared-dav'),
+  })`);
+  assert.equal(office.saveHidden, true, 'Office 文件不该给保存按钮');
+  assert.match(office.hint, /网盘|挂载/, '应引导用网盘挂载编辑');
+  assert.equal(office.hasDavButton, true, '应能复制网盘地址');
+
+  assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
+});
+
 test('浏览器：没选中节点时可以写整图备注/批注，图片默认收成小图标、可展开多张', { skip, timeout: 120000 }, async (t) => {
   const { session, slug } = await bootProject();
   const browser = await openBrowser(`${session.url}/#${encodeURIComponent(slug)}`);

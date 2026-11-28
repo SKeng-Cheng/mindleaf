@@ -283,6 +283,9 @@ export function createTools(store) {
       if (doc.annotation) mapBits.push(`⚑ 整图批注: ${doc.annotation.replace(/\n/g, ' ')}`);
       if (doc.note) mapBits.push(`整图备注: ${doc.note.replace(/\n/g, ' ').slice(0, 300)}`);
       for (const image of doc.images ?? []) mapBits.push(`🖼 ${image.path}${image.name ? ` (${image.name})` : ''}`);
+      for (const shared of doc.sharedFiles ?? []) {
+        mapBits.push(`📄 分享文件 ${shared.id}: ${shared.path}（${shared.mode === 'rw' ? '可编辑' : '只读'}）`);
+      }
       const mapBlock = mapBits.length ? `${mapBits.join('\n')}\n` : '';
       const header = `# ${doc.title}  (slug: ${slug}, rev ${doc.rev}, ${stats.nodes} 节点, 深 ${stats.maxDepth}${tagText})\n文件: ${file}\n${mapBlock}`;
       if (format === 'json') return toolResult(header + JSON.stringify(doc, null, 2));
@@ -633,6 +636,89 @@ Example: {"ops":[{"op":"addNode","parent":"n_root","text":"第 1 章"},{"op":"ad
         `已更新导图设置：「${next.title}」，layout=${next.settings.layout}，theme=${next.settings.theme}，标签=${tags}` +
           `${next.note ? `，整图备注 ${next.note.length} 字` : ''}${next.annotation ? '，整图批注已更新' : ''}。\n${summarizeAfterWrite(next, '设置')}`,
       );
+    },
+  );
+
+  add(
+    {
+      name: 'mindleaf_list_shared_files',
+      description:
+        'List the local files a map has shared (docx / pptx / pdf / images / text). These are real files on the human\'s disk; guests and agents edit them in place, never a copy.',
+      inputSchema: {
+        type: 'object',
+        properties: { map: { type: 'string' } },
+        required: ['map'],
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const files = store.sharedFiles(args.map);
+      if (!files.length) return toolResult('这张图还没有分享任何文件。人类可以在网页里「分享文件」区块添加。');
+      const lines = files.map(
+        (file) =>
+          `- ${file.id}  ${file.path}${file.label ? `（${file.label}）` : ''}  ` +
+          `${file.mode === 'rw' ? '可编辑' : '只读'}  ${file.size} 字节` +
+          `${file.exists ? '' : '  ⚠️ 磁盘上已不存在'}${file.error ? `  ⚠️ ${file.error}` : ''}`,
+      );
+      return toolResult(`共 ${files.length} 个分享文件（相对工作区 ${store.workspaceDir}）：\n${lines.join('\n')}`);
+    },
+  );
+
+  add(
+    {
+      name: 'mindleaf_read_shared_file',
+      description:
+        'Read a shared local file by id. Text files (md/txt/csv/json/code) return their content; binary files (docx/pptx/pdf/images) return the absolute path so you can process it with other tools.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          map: { type: 'string' },
+          id: { type: 'string', description: 'Shared file id (sf_xxxxxx), from list_shared_files or read_map.' },
+        },
+        required: ['map', 'id'],
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const files = store.sharedFiles(args.map);
+      const target = files.find((item) => item.id === args.id);
+      if (!target) throw new StoreError(`分享清单里没有这个文件: ${args.id}`, 'not_found');
+      if (!target.exists) throw new StoreError(`文件不存在: ${target.path}`, 'not_found');
+      const binary = ['.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.zip'].includes(target.ext);
+      if (binary) {
+        return toolResult(
+          `这是一个二进制文件，不能当文本读：\n路径: ${target.abs}\n大小: ${target.size} 字节\n` +
+            '需要内容时请用你自己的文件处理能力读这个路径（不要复制到别处，直接读原地文件）。',
+        );
+      }
+      const data = store.readSharedText(args.map, args.id);
+      return toolResult(
+        `# ${target.path}${target.label ? `（${target.label}）` : ''}\n` +
+          `模式: ${target.mode === 'rw' ? '可编辑' : '只读'} · ${data.size} 字节 · mtime ${data.mtime}\n\n${data.content}`,
+      );
+    },
+  );
+
+  add(
+    {
+      name: 'mindleaf_write_shared_file',
+      description:
+        'Overwrite a shared TEXT file in place (md/txt/csv/json/code). Only works when the share mode is "rw". The server backs the old version up first. Pass mtime from read_shared_file to detect concurrent edits.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          map: { type: 'string' },
+          id: { type: 'string' },
+          content: { type: 'string', description: 'Full new file content (not a patch).' },
+          mtime: { type: 'number', description: 'Optional: the mtime you read. If the file changed since, the write is rejected.' },
+        },
+        required: ['map', 'id', 'content'],
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const saved = store.writeSharedText(args.map, args.id, args.content, Number(args.mtime));
+      return toolResult(`已写回 ${saved.path}（${saved.size} 字节，mtime ${saved.mtime}）。旧版本已备份到 .mindleaf/file-backups/。`);
     },
   );
 

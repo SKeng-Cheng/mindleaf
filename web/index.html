@@ -343,6 +343,46 @@
   <div class="note-tooltip-body" id="note-tooltip-body"></div>
 </div>
 
+<!-- ================= 选择要分享的文件 ================= -->
+<dialog class="modal" id="dlg-browse">
+  <form class="modal-card" novalidate>
+    <div class="modal-head">
+      <h2>选择要分享的文件</h2>
+      <button type="button" class="icon-btn xs" data-close title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="browse-path" id="browse-path">—</div>
+    <div class="browse-list" id="browse-list"></div>
+    <p class="hint" id="browse-hint">点一个文件把它加进分享清单；对方就能在浏览器里看，或者用网盘挂载后用本机 Office 改。</p>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" data-close>取消</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ================= 查看 / 编辑分享文件 ================= -->
+<dialog class="modal modal-lg" id="dlg-shared">
+  <form class="modal-card" novalidate>
+    <div class="modal-head">
+      <h2 id="shared-title">文件</h2>
+      <button type="button" class="icon-btn xs" data-close title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="shared-meta" id="shared-meta">—</div>
+    <div class="shared-body" id="shared-body"></div>
+    <p class="hint" id="shared-hint"></p>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost sm" id="btn-shared-dav">复制网盘地址</button>
+      <span class="form-row-spacer"></span>
+      <button type="button" class="btn ghost sm" id="btn-shared-reload">重新加载</button>
+      <button type="button" class="btn primary sm" id="btn-shared-save" hidden>保存</button>
+      <button type="button" class="btn ghost" data-close>关闭</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- ================= 局域网分享 ================= -->
 <dialog class="modal" id="dlg-share">
   <form class="modal-card" novalidate>
@@ -353,7 +393,7 @@
       </button>
     </div>
     <p class="modal-desc">同一个局域网里的人用这个地址打开，就能一起看、一起改这份导图 —— 改的是你电脑上的同一份文件，不用发文件。</p>
-    <div class="share-row">
+    <div class="share-url-row">
       <textarea class="input mono share-url" id="share-url" rows="2" readonly spellcheck="false" aria-label="分享链接"></textarea>
       <button type="button" class="btn primary sm" id="btn-share-copy">复制</button>
     </div>

@@ -7,6 +7,8 @@ import {
   BOX_HEIGHT_MAX,
   BOX_HEIGHT_MIN,
   IMAGES_MAX,
+  SHARED_FILES_MAX,
+  normalizeSharedFiles,
   BOX_WIDTH_MAX,
   BOX_WIDTH_MIN,
   DocError,
@@ -344,6 +346,49 @@ export function removeImage(doc, patch = {}) {
   return { nodeId: owner.id ?? '@map', imageId };
 }
 
+/* ---- 分享文件清单 ---- */
+
+const needShared = (doc, id) => {
+  const list = doc.sharedFiles ?? [];
+  const hit = list.find((item) => item.id === id);
+  if (!hit) throw new DocError(`分享清单里没有这个文件: ${id}`, 'not_found');
+  return hit;
+};
+
+/** 往分享清单里加一个文件（path 相对 workspaceDir）。 */
+export function addSharedFile(doc, patch = {}) {
+  const [file] = normalizeSharedFiles([{ path: patch.path, label: patch.label, mode: patch.mode }]);
+  if (!file) throw new DocError('缺少文件路径（相对工作区）', 'invalid_argument');
+  const list = doc.sharedFiles ?? [];
+  if (list.some((item) => item.path === file.path)) {
+    throw new DocError(`已经在分享清单里了: ${file.path}`, 'duplicate');
+  }
+  if (list.length >= SHARED_FILES_MAX) throw new DocError(`最多分享 ${SHARED_FILES_MAX} 个文件`, 'invalid_argument');
+  doc.sharedFiles = [...list, file];
+  return file;
+}
+
+/** 改分享项的标签或读写模式。 */
+export function updateSharedFile(doc, patch = {}) {
+  const file = needShared(doc, patch.id);
+  if (Object.prototype.hasOwnProperty.call(patch, 'mode')) file.mode = patch.mode === 'rw' ? 'rw' : 'ro';
+  if (Object.prototype.hasOwnProperty.call(patch, 'label')) {
+    const label = typeof patch.label === 'string' ? patch.label.trim().slice(0, 120) : '';
+    if (label) file.label = label;
+    else delete file.label;
+  }
+  return file;
+}
+
+/** 从分享清单里移除（不动磁盘上的文件）。 */
+export function removeSharedFile(doc, patch = {}) {
+  const file = needShared(doc, patch.id);
+  const rest = (doc.sharedFiles ?? []).filter((item) => item.id !== file.id);
+  if (rest.length) doc.sharedFiles = rest;
+  else delete doc.sharedFiles;
+  return { id: file.id, path: file.path };
+}
+
 /** 设置文档标题/布局/主题。 */
 export function setDoc(doc, patch = {}) {
   if (typeof patch.title === 'string' && patch.title.trim()) {
@@ -403,6 +448,15 @@ export function applyOps(doc, ops) {
       case 'reorderNode':
         results.push(reorderNode(next, patch));
         break;
+      case 'addSharedFile':
+        results.push(addSharedFile(next, patch));
+        break;
+      case 'updateSharedFile':
+        results.push(updateSharedFile(next, patch));
+        break;
+      case 'removeSharedFile':
+        results.push(removeSharedFile(next, patch));
+        break;
       case 'addImage':
         results.push(addImage(next, patch));
         break;
@@ -437,6 +491,9 @@ export const OP_NAMES = [
   'reorderNode',
   'addImage',
   'removeImage',
+  'addSharedFile',
+  'updateSharedFile',
+  'removeSharedFile',
   'addEdge',
   'updateEdge',
   'removeEdge',

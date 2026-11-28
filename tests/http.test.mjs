@@ -31,6 +31,71 @@ const setup = async () => {
   return { session, base, api, projectDir };
 };
 
+test('HTTP: 分享文件 —— 清单、读文本、写回、只读拦截、目录浏览', async (t) => {
+  const projectDir = tempProject();
+  // 在工作区里放两个文件
+  fs.mkdirSync(path.join(projectDir, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(projectDir, 'docs/方案.md'), '# 方案\n第一版\n', 'utf8');
+  fs.writeFileSync(path.join(projectDir, 'docs/图.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]));
+  const session = await startServer({ projectDir, port: 0, host: '127.0.0.1' });
+  t.after(() => session.close());
+  const api = async (method, pathname, body) => {
+    const response = await fetch(session.url + pathname, {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: response.status, json: await response.json().catch(() => null) };
+  };
+
+  const created = await api('POST', '/api/maps', { title: '分享图', rootText: '根' });
+  const slug = created.json.slug;
+
+  // 目录浏览：能列出 docs，并挡住穿越
+  const browse = await api('GET', `/api/shared/browse?dir=`);
+  assert.equal(browse.status, 200);
+  assert.ok(browse.json.entries.some((entry) => entry.name === 'docs' && entry.dir));
+  assert.equal((await api('GET', `/api/shared/browse?dir=..%2F..`)).status, 400);
+
+  // 添加两个文件（一个 rw 一个 ro）
+  const addText = await api('POST', '/api/shared', { map: slug, action: 'add', path: 'docs/方案.md', mode: 'rw' });
+  assert.equal(addText.status, 200);
+  const addImage = await api('POST', '/api/shared', { map: slug, action: 'add', path: 'docs/图.png', mode: 'ro' });
+  assert.equal(addImage.status, 200);
+  assert.equal((await api('POST', '/api/shared', { map: slug, action: 'add', path: 'docs/方案.md' })).status, 409, '重复添加应冲突');
+  assert.equal((await api('POST', '/api/shared', { map: slug, action: 'add', path: 'docs/不存在.md' })).status, 404);
+
+  const list = await api('GET', `/api/shared?map=${encodeURIComponent(slug)}`);
+  assert.equal(list.json.files.length, 2);
+  const textFile = list.json.files.find((file) => file.ext === '.md');
+  const imageFile = list.json.files.find((file) => file.ext === '.png');
+  assert.equal(textFile.mode, 'rw');
+  assert.equal(textFile.exists, true);
+
+  // 读文本
+  const read = await api('GET', `/api/shared/text?map=${encodeURIComponent(slug)}&id=${textFile.id}`);
+  assert.equal(read.status, 200);
+  assert.match(read.json.content, /第一版/);
+
+  // 写回
+  const write = await api('PUT', '/api/shared/text', { map: slug, id: textFile.id, content: '# 方案\n第二版\n', mtime: read.json.mtime });
+  assert.equal(write.status, 200);
+  assert.equal(fs.readFileSync(path.join(projectDir, 'docs/方案.md'), 'utf8'), '# 方案\n第二版\n');
+  assert.ok(fs.readdirSync(path.join(projectDir, '.mindleaf/file-backups', slug)).length >= 1, '旧版本应备份');
+
+  // 只读文件不能写
+  const ro = await api('PUT', '/api/shared/text', { map: slug, id: imageFile.id, content: 'x' });
+  assert.equal(ro.status, 403);
+
+  // 二进制不能当文本读
+  assert.equal((await api('GET', `/api/shared/text?map=${encodeURIComponent(slug)}&id=${imageFile.id}`)).status, 400);
+
+  // 移出清单（磁盘文件还在）
+  const removed = await api('POST', '/api/shared', { map: slug, action: 'remove', id: imageFile.id });
+  assert.equal(removed.status, 200);
+  assert.equal(fs.existsSync(path.join(projectDir, 'docs/图.png')), true, '移出分享不应删文件');
+});
+
 test('HTTP: 附图可以上传、取回，路径穿越被拒，删导图会清掉', async (t) => {
   const { session, api, projectDir } = await setup();
   t.after(() => session.close());

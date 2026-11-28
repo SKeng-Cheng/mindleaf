@@ -300,6 +300,52 @@ test('MCP: 字号、字体、框尺寸与 list_fonts', async (t) => {
   assert.match(blocked.text, /只能改颜色/);
 });
 
+test('MCP: 分享文件 —— 列表、读文本、写回、只读拦截', async (t) => {
+  const projectDir = tempProject();
+  fs.mkdirSync(path.join(projectDir, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(projectDir, 'docs', '方案.md'), '# 方案\n第一版\n', 'utf8');
+  fs.writeFileSync(path.join(projectDir, 'docs', '报告.docx'), Buffer.from([0x50, 0x4b, 3, 4, 0, 0]));
+  const mcp = await startMcp(projectDir);
+  t.after(() => mcp.close());
+  await mcp.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+  await mcp.callTool('mindleaf_create_map', { title: '分享图', rootText: '根' });
+
+  // 直接走 ops 加两个分享项
+  await mcp.callTool('mindleaf_apply_ops', {
+    map: '分享图',
+    ops: [
+      { op: 'addSharedFile', path: 'docs/方案.md', mode: 'rw' },
+      { op: 'addSharedFile', path: 'docs/报告.docx', mode: 'ro' },
+    ],
+  });
+
+  const list = await mcp.callTool('mindleaf_list_shared_files', { map: '分享图' });
+  assert.match(list.text, /docs\/方案\.md/);
+  assert.match(list.text, /可编辑/);
+  assert.match(list.text, /只读/);
+  const id = /- (sf_[a-z0-9]+)\s+docs\/方案\.md/.exec(list.text)?.[1];
+  assert.ok(id, list.text);
+
+  const read = await mcp.callTool('mindleaf_read_shared_file', { map: '分享图', id });
+  assert.match(read.text, /第一版/);
+  const mtime = Number(/mtime (\d+)/.exec(read.text)?.[1] ?? 0);
+
+  const wrote = await mcp.callTool('mindleaf_write_shared_file', { map: '分享图', id, content: '# 方案\nAI 改的\n', mtime });
+  assert.equal(wrote.isError, false, wrote.text);
+  assert.equal(fs.readFileSync(path.join(projectDir, 'docs/方案.md'), 'utf8'), '# 方案\nAI 改的\n');
+
+  // 只读文件不能写
+  const docxId = /- (sf_[a-z0-9]+)\s+docs\/报告\.docx/.exec(list.text)?.[1];
+  const blocked = await mcp.callTool('mindleaf_write_shared_file', { map: '分享图', id: docxId, content: 'x' });
+  assert.equal(blocked.isError, true);
+  assert.match(blocked.text, /只读/);
+
+  // 二进制文件读回来只给路径
+  const binRead = await mcp.callTool('mindleaf_read_shared_file', { map: '分享图', id: docxId });
+  assert.match(binRead.text, /二进制文件/);
+  assert.match(binRead.text, /报告\.docx/);
+});
+
 test('MCP: 整张图的备注 / 批注 / 图片', async (t) => {
   const projectDir = tempProject();
   const mcp = await startMcp(projectDir);
