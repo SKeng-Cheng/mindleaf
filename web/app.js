@@ -2701,32 +2701,102 @@ async function renderBrowse() {
   list.innerHTML = rows.length ? rows.join('') : '<p class="image-empty">这个目录是空的</p>';
 }
 
-/** 用本机 Office 打开的引导（Office 文件在浏览器里没法就地编辑）。 */
+/** 这个文件在网盘里的地址（给对方用本机 Office 直开）。 */
+function sharedDavFileUrl() {
+  const dav = state.boot?.dav;
+  if (!dav || !sharedCurrent) return '';
+  const encoded = sharedCurrent.path.split('/').map(encodeURIComponent).join('/');
+  return `${dav.url}${encoded}`;
+}
+
+/** Office 文件的几种打开方式：一键用本机 Office（URL scheme）、下载改完传回来、挂载网盘。 */
 function officeGuideHtml() {
   const platform = state.boot?.preview?.platform ?? 'darwin';
+  const ext = fileExt(sharedCurrent?.path ?? '');
+  const scheme =
+    ['.doc', '.docx'].includes(ext) ? 'ms-word' : ['.ppt', '.pptx'].includes(ext) ? 'ms-powerpoint' : ['.xls', '.xlsx'].includes(ext) ? 'ms-excel' : '';
+  const appName = fileExtText();
+  const dav = state.boot?.dav;
+  const fileUrl = sharedDavFileUrl();
+  const schemeHref = scheme && fileUrl ? `${scheme}:ofe|u|${fileUrl}` : '';
   const mountStep =
     platform === 'darwin'
-      ? 'Finder 里按 <kbd>⌘K</kbd> → 粘贴地址 → 用户名 <code>mindleaf</code>、密码是访问口令'
+      ? 'Finder 按 <kbd>⌘K</kbd> 粘贴地址'
       : platform === 'win32'
-        ? '资源管理器 → 右键「映射网络驱动器」→ 粘贴地址 → 用户名 <code>mindleaf</code>、密码是访问口令'
-        : '用文件管理器挂载 WebDAV（如 davfs2）→ 粘贴地址 → 用户名 <code>mindleaf</code>、密码是访问口令';
-  const appName = fileExtText()
+        ? '资源管理器右键「映射网络驱动器」'
+        : '用文件管理器挂载 WebDAV（davfs2 等）';
+  const editable = sharedCurrent?.mode === 'rw';
   return `
     <div class="office-guide">
       <div class="office-guide-head">
         <span class="office-guide-icon" aria-hidden="true">📄</span>
         <div>
-          <p class="office-guide-title">浏览器里改不了 Word / PowerPoint，请用你本机装的 ${appName} 打开</p>
-          <p class="office-guide-sub">改完保存，写回的还是这台电脑上的原文件，你那边不会留副本。</p>
+          <p class="office-guide-title">这是 ${appName} 文件，浏览器里没法直接编辑 —— 挑一种方式打开</p>
+          <p class="office-guide-sub">改完保存，写回的还是这台电脑上的原文件，你那边不用留副本。</p>
         </div>
       </div>
-      <ol class="office-guide-steps">
-        <li>点下面的「复制网盘地址」，会得到 <b>地址 / 用户名 / 密码</b> 三项</li>
-        <li>${mountStep}</li>
-        <li>挂载出来的目录里双击这个文件，用 <b>Word / PowerPoint / Excel</b> 直接编辑保存</li>
-      </ol>
-      <button type="button" class="btn primary sm" data-act="shared-dav-copy">复制网盘地址并说明</button>
+      ${
+        schemeHref
+          ? `<div class="office-row">
+              <a class="btn primary sm" href="${esc(schemeHref)}" data-act="open-local-office">用本机 ${appName} 打开</a>
+            </div>
+            <p class="office-actions-hint">浏览器会问一句"是否打开 ${appName}"，点允许就行；第一次可能要输一次网盘的用户名和密码，之后不用再输。</p>`
+          : ''
+      }
+      <div class="office-row">
+        <button type="button" class="btn ghost sm" data-act="shared-download">下载一份，改完传回来</button>
+        ${
+          editable
+            ? '<button type="button" class="btn ghost sm" data-act="shared-upload">上传替换…</button>'
+            : '<span class="office-actions-hint">只读分享，不能替换</span>'
+        }
+      </div>
+      <details class="office-details">
+        <summary>或者把网盘挂载成目录（一次设置，之后双击就能改）</summary>
+        <ol class="office-guide-steps">
+          <li>点「复制网盘地址」，拿到 <b>地址 / 用户名 / 密码</b></li>
+          <li>${mountStep}，用户名 <code>${esc(dav?.user ?? 'mindleaf')}</code>，密码是访问口令</li>
+          <li>挂载出来的目录里双击文件，用本机的 ${appName} 编辑保存</li>
+        </ol>
+        <button type="button" class="btn ghost sm" data-act="shared-dav-copy">复制网盘地址</button>
+      </details>
     </div>`;
+}
+
+/** 下载一份到本地（改完可以再传回来）。 */
+function downloadSharedFile() {
+  if (!sharedCurrent) return;
+  const qs = `map=${encodeURIComponent(state.slug)}&id=${encodeURIComponent(sharedCurrent.id)}&download=1`;
+  window.open(`/api/shared/raw?${qs}`, '_blank', 'noopener');
+}
+
+/** 选一个文件整份替换原来的分享文件（带 mtime 冲突检查）。 */
+function uploadSharedFile() {
+  if (!sharedCurrent) return;
+  const file = sharedCurrent;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.addEventListener('change', async () => {
+    const picked = input.files?.[0];
+    if (!picked) return;
+    try {
+      const response = await fetch(`/api/shared/file?map=${encodeURIComponent(state.slug)}&id=${encodeURIComponent(file.id)}&mtime=${file.mtime || 0}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: picked,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new ApiError(data?.message ?? '上传失败', data?.error ?? 'error');
+      file.mtime = data.file.mtime;
+      toast('已替换原文件（旧版本已备份）', { tone: 'ok' });
+      await loadSharedFiles();
+      await renderSharedView();
+    } catch (error) {
+      if (error.code === 'conflict') toast('原文件在磁盘上被改过了，请重新下载再改', { tone: 'warn' });
+      else toast(error.message, { tone: 'error' });
+    }
+  });
+  input.click();
 }
 
 /** 根据扩展名猜该用哪个本机程序（只说大类，不写死软件名）。 */
@@ -2763,6 +2833,7 @@ async function renderSharedView() {
   const body = $('#shared-body');
   const hint = $('#shared-hint');
   const ext = fileExt(file.path);
+  body.classList.remove('is-office');
 
   if (isImageExt(file.path)) {
     file.kind = 'image';
@@ -2781,6 +2852,7 @@ async function renderSharedView() {
   if (isOfficeExt(file.path)) {
     file.kind = 'office';
     const canPreview = state.boot?.preview?.office === true;
+    body.classList.add('is-office');
     body.innerHTML = `${
       canPreview
         ? `<div class="shared-image"><img src="${base}/preview?${qs}" alt="${esc(file.path)}" onerror="this.closest('.shared-image')?.remove()"></div>`
@@ -3018,6 +3090,15 @@ async function handleInspectorAction(act, element) {
       break;
     case 'shared-open':
       openSharedFile(element.dataset.id);
+      break;
+    case 'shared-download':
+      downloadSharedFile();
+      break;
+    case 'shared-upload':
+      uploadSharedFile();
+      break;
+    case 'open-local-office':
+      // 交给系统：浏览器会弹"是否用 Word 打开"，这里不需要额外处理
       break;
     case 'shared-remove':
       removeSharedFile(element.dataset.id);

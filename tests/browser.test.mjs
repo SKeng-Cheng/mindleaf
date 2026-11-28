@@ -708,6 +708,10 @@ test('浏览器：分享文件 —— 清单、打开文本改并保存、Office
     guideSteps: [...document.querySelectorAll('.office-guide-steps li')].map((li) => li.textContent.trim()),
     guideCopy: !!document.querySelector('[data-act="shared-dav-copy"]'),
     previewOrNote: !!document.querySelector('.shared-image img') || !!document.querySelector('.shared-image'),
+    openLocal: document.querySelector('[data-act="open-local-office"]')?.getAttribute('href') ?? '',
+    hasDownload: !!document.querySelector('[data-act="shared-download"]'),
+    hasUpload: !!document.querySelector('[data-act="shared-upload"]'),
+    mountFolded: document.querySelector('.office-details')?.open === false,
   })`);
   assert.equal(office.saveHidden, true, 'Office 文件不该给保存按钮');
   assert.equal(office.hasDavButton, true, '应能复制网盘地址');
@@ -717,6 +721,10 @@ test('浏览器：分享文件 —— 清单、打开文本改并保存、Office
   assert.match(office.guideSteps.join(' '), /Finder|资源管理器|文件管理器/, '应说明怎么挂载网盘');
   assert.match(office.guideSteps.join(' '), /Word|PowerPoint|Excel|编辑/, '应说明用本机 Office 编辑');
   assert.equal(office.guideCopy, true, '引导里应有复制网盘地址的按钮');
+  assert.match(office.openLocal, /^ms-word:ofe\|u\|http:\/\//, `应有"用本机 Word 打开"的链接，实际 ${office.openLocal}`);
+  assert.equal(office.hasDownload, true, '应能下载一份去改');
+  assert.equal(office.hasUpload, false, '只读分享不该出现「上传替换」');
+  assert.equal(office.mountFolded, true, '挂载步骤默认折叠，不打扰主流程');
 
   assert.deepEqual(browser.consoleErrors, [], `不应有控制台错误: ${browser.consoleErrors.join(' | ')}`);
 });

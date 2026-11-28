@@ -1243,6 +1243,9 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .shared-body { display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
 .shared-image { display: flex; justify-content: center; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; }
 .shared-image img { max-width: 100%; max-height: 56vh; object-fit: contain; }
+/* Office 视图：上面是预览、下面是引导，预览压低一点免得挤到按钮 */
+.shared-body.is-office .shared-image img { max-height: 30vh; }
+.shared-body.is-office { gap: 10px; }
 .shared-frame { width: 100%; height: 58vh; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
 .shared-editor {
   width: 100%;
@@ -1299,6 +1302,17 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
   font-size: 10.5px;
 }
 .office-guide .btn { align-self: flex-start; }
+.office-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.office-actions-hint { margin: -2px 0 0; font-size: 11px; color: var(--ink-3); line-height: 1.55; }
+.office-details { font-size: 11.5px; color: var(--ink-2); }
+.office-details summary {
+  cursor: pointer;
+  padding: 4px 0;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+.office-details summary:hover { color: var(--ink); }
+.office-details .office-guide-steps { margin: 8px 0 8px; }
 
 /* ---------- 节点截图（贴在备注下面） ---------- */
 .image-head {

@@ -251,6 +251,27 @@ export class Store {
     return { id: info.id, path: info.path, size: after.size, mtime: after.mtime };
   }
 
+  /**
+   * 用二进制内容整份替换一个分享文件（"下载→改→传回来"这条路）。
+   * 同样只允许 rw、先备份、mtime 冲突检测。
+   */
+  writeSharedBinary(slug, id, buffer, baseMtime) {
+    const { info } = this.needSharedFile(slug, id);
+    if (info.mode !== 'rw') throw new StoreError('这个文件是只读分享，不能修改', 'forbidden');
+    if (!buffer?.length) throw new StoreError('上传内容为空', 'invalid_argument');
+    if (Number.isFinite(baseMtime) && baseMtime > 0 && Math.abs(info.mtime - Number(baseMtime)) > 1000) {
+      const error = new StoreError('文件在磁盘上已经被改过了，请重新下载再改', 'conflict');
+      error.current = { mtime: info.mtime, size: info.size };
+      throw error;
+    }
+    this.#backupSharedFile(slug, info);
+    const tmp = `${info.abs}.mindleaf-upload`;
+    fs.writeFileSync(tmp, buffer);
+    fs.renameSync(tmp, info.abs);
+    const after = this.describeSharedFile(info);
+    return { id: info.id, path: info.path, size: after.size, mtime: after.mtime };
+  }
+
   #backupSharedFile(slug, info) {
     try {
       const dir = path.join(this.backupDir, slug.replace(/[^\w\u4e00-\u9fa5.-]/g, '_'));

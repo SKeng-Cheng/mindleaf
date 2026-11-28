@@ -424,6 +424,16 @@ export async function createApp(options = {}) {
     json(res, 200, { ok: true, file: saved });
   });
 
+  // 整份替换（"下载→用本机 Office 改→传回来"）
+  route('PUT', /^\/api\/shared\/file$/, async (req, res, params, url) => {
+    const slug = decodeURIComponent(url.searchParams.get('map') ?? '');
+    const id = url.searchParams.get('id') ?? '';
+    const baseMtime = Number(url.searchParams.get('mtime') ?? 0);
+    const buffer = await readBinary(req, 64 * 1024 * 1024);
+    const saved = store.writeSharedBinary(slug, id, buffer, baseMtime);
+    json(res, 200, { ok: true, file: saved });
+  });
+
   // Office / PDF 的预览图（qlmanage 生成，缓存在 .mindleaf/previews）
   route('GET', /^\/api\/shared\/preview$/, async (req, res, params, url) => {
     const slug = url.searchParams.get('map');
